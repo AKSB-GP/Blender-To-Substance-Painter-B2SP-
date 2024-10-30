@@ -22,10 +22,11 @@ class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
     bl_label = "Export to Substance Painter"
 
     # Base paths
-    export_folder = os.path.normpath("C:\\Substancepainter\\FBX")
+    export_folder = os.path.normpath("C:/Substancepainter/FBX")
+    
     substance_painter_path = os.path.normpath(
-        "C:\\Program\\Adobe\\Adobe Substance 3D Painter\\Substance Painter.exe")
-       # C:\Program Files\Adobe\Adobe Substance 3D Painter
+        "C:/Program Files/Adobe/Adobe Substance 3D Painter/Adobe Substance 3D Painter.exe")
+   
     def execute(self, context):
         # Ensure export folder exists
         if not os.path.exists(self.export_folder):
@@ -79,9 +80,12 @@ class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
             self.report({"INFO"}, f"Exported {obj.name} to {file}")
             self.report({"INFO"}, f"Opening {obj.name} in Substance Painter")
 
-            self.open_substancepainter(file)
-
-            return True
+            #self.open_substancepainter(file)
+            object_path = os.path.normpath(os.path.join(self.export_folder,export_name))
+            object_path = object_path.replace("\\","/")
+            self.open_substancepainter(object_path)
+            self.report({"INFO"}, f"object path {object_path}")
+            return object_path
         else:    
             self.report({"WARNING"}, f"{obj.name} is not a mesh object, skipping mesh check.")
             return False
@@ -90,14 +94,20 @@ class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
 
         try:
             # Run Substance Painter
-            self.report({"INFO"}, f"Trying to open Substance Painter at {str(self.substance_painter_path)}")
-            subprocess.Popen([self.substance_painter_path,File])
-            return True
+            self.report({"INFO"}, f"Trying to open Substance Painter at {str(self.substance_painter_path)} with FBX {File}")
+            #subprocess.Popen([self.substance_painter_path,File])
+            #"C:\Program Files\Adobe\Adobe Substance 3D Painter\Adobe Substance 3D Painter.exe"
+            #"C:\Program Files\Adobe\Adobe Substance 3D Painter"
+   
+            subprocess.run([self.substance_painter_path, "--mesh", File], check=True)
+            #subprocess.Popen([f'"{self.substance_painter_path}"', f'"{File}"'])
+            self.report({"INFO"}, f'"{self.substance_painter_path}"')
+            self.report({"INFO"}, f'"{File}"')
+            
         except Exception as e:
             self.report(
                 {'ERROR'}, f"Could not open Substance Painter: {str(e)}, {str(self.substance_painter_path)},{str(File)}")
-            return False
-
+    
 
 
 class VIEW3D_PT_QuickExporter(bpy.types.Panel):
