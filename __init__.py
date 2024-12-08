@@ -16,6 +16,8 @@ bl_info = {
     "category": "Exporter",
 }
 
+#Move paths to seperate file
+
 
 class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
     bl_idname = "export.substance_painter"
@@ -44,6 +46,7 @@ class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
         except Exception as e:
             self.report({"ERROR"}, f"Failed to export {obj.name}, the error: {str(e)}")
         return {'FINISHED'}
+    
 
     def material_check(self,obj):
 
@@ -64,20 +67,32 @@ class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
             if obj.type == 'MESH':
         
                 self.material_check(obj)
-                # Fix name and path
-                export_name = f"{obj.name}.fbx"
-                export_path = os.path.normpath(
-                os.path.join(self.export_folder, export_name))
-            
-                file = bpy.ops.export_scene.fbx(filepath=export_path, global_scale=1.0, apply_unit_scale=True, use_selection=True)
+                #Create object folder
+                object_folder = os.path.join(self.export_folder, obj.name)
+                os.makedirs(object_folder, exist_ok=True)
+
+                # Create a texture folder inside the object folder
+                texture_folder_name = f"{obj.name}_textures" 
+                texture_folder = os.path.join(object_folder, texture_folder_name)
+                os.makedirs(texture_folder, exist_ok=True)
                 
+                #Set final exportpath and name
+                export_name = f"{obj.name}.fbx"
+                export_path = os.path.normpath(os.path.join(object_folder, export_name))
+
                 # Export the selected object
+                file = bpy.ops.export_scene.fbx(filepath=export_path, 
+                                                global_scale=1.0, 
+                                                apply_unit_scale=True, 
+                                                use_selection=True)
+                # Print info
                 self.report({"INFO"}, f"Exported {obj.name} to {file}")
                 self.report({"INFO"}, f"Opening {obj.name} in Substance Painter")
 
-                object_path = os.path.normpath(os.path.join(self.export_folder,export_name))
-                object_path = object_path.replace("\\","/")
-                
+
+                #Normalize the path
+                object_path = export_path.replace("\\", "/")
+                # Attempt to open substance painter
                 self.open_substancepainter(object_path)
                 self.report({"INFO"}, f"object path {object_path}")
                 return object_path
@@ -97,6 +112,21 @@ class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
 
 
 
+class OPEN_OT_FBXFolder(bpy.types.Operator):
+    """Opens the FBX Export Folder"""
+    bl_idname = "open.fbx_folder"
+    bl_label = "Open FBX Folder"
+
+    def execute(self, context):
+        export_folder = os.path.normpath("C:/Substancepainter/FBX")
+        try:
+            os.startfile(export_folder)  
+            self.report({'INFO'}, f"Opened folder: {export_folder}")
+        except Exception as e:
+            self.report({'ERROR'}, f"Failed to open folder: {str(e)}")
+        return {'FINISHED'}
+
+
 class VIEW3D_PT_QuickExporter(bpy.types.Panel):
     """UI Panel for quick export to Substance Painter"""
     bl_space_type = "VIEW_3D"
@@ -109,13 +139,15 @@ class VIEW3D_PT_QuickExporter(bpy.types.Panel):
         row = layout.row()
         row.operator(EXPORT_OT_Substancepainter_exporter.bl_idname,
                      text="Export to Substance Painter")
+        row = layout.row()
+        row.operator(OPEN_OT_FBXFolder.bl_idname,
+                     text="Open the fbx folder")
+     
 
 
-classes = (VIEW3D_PT_QuickExporter, EXPORT_OT_Substancepainter_exporter)
+classes = (VIEW3D_PT_QuickExporter, EXPORT_OT_Substancepainter_exporter,OPEN_OT_FBXFolder)
 
 # Register the panel class
-
-
 def register():
     for c in classes:
         bpy.utils.register_class(c)
