@@ -28,7 +28,6 @@ class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
     
     substance_painter_path = os.path.normpath(
         "C:/Program Files/Adobe/Adobe Substance 3D Painter/Adobe Substance 3D Painter.exe")
-    isrunning = False
 
     def execute(self, context):
         # Ensure export folder exists
@@ -111,6 +110,99 @@ class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
                 {'ERROR'}, f"Could not open Substance Painter: {str(e)}, {str(self.substance_painter_path)},{str(File)}")
 
 
+#one object at a time! test with multiple
+class IMPORT_OT_Textures(bpy.types.Operator):
+    bl_idname ="import.textures"
+    bl_label = "import Textures"
+    
+    
+
+    def execute(self,context):
+        #Get active object
+        obj = bpy.context.active_object
+        
+        #texture folder for object:
+        textures_folder = os.path.join(os.path.normpath("C:/Substancepainter/FBX"),obj.name,f"{obj.name}_textures")        
+        
+        if not textures_folder:
+            self.report({"INFO"}, f"Texture folder {str(textures_folder)} does not exist")
+            return {'CANCELLED'}
+
+        #Validate selection
+        if not obj or obj.type !="MESH":
+            self.report({"INFO"}, "Object is not a mesh or no object is selected")
+        
+        #Validate material, incase export function hasnt been used
+        if not obj.data.materials:
+            mat = bpy.data.materials.new(new=f"{obj.name}_Material")
+            mat.use_nodes = True
+            obj.data.materials.append(mat)
+        material = obj.data.materials[0]
+        #if material already exists, check if nodes are used
+        if not material.use_nodes:
+            material.use_nodes = True
+        
+        #Call assign textures method
+        self.assign_textures(material,textures_folder)
+        
+        return {"FINISHED"}
+        #obs! make sure node wrangler is enabled
+    def assign_textures(self,material,textures_folder):
+        #nodes and links of material
+        node_tree = material.node_tree
+        nodes = node_tree.nodes
+        links = node_tree.links
+        file_types = (".png",".jpg",".jpeg")
+        # Remove previous nodes to clear the workspace
+        for node in nodes:
+            nodes.remove(node)
+
+        # create BSDF and output node
+        output_node = nodes.new(type="ShaderNodeOutputMaterial")
+        output_node.location = (400, 0)
+
+        principled_node = nodes.new(type="ShaderNodeBsdfPrincipled")
+        principled_node.location = (0, 0)
+
+        # Link the Principled BSDF to the Material Output
+        links.new(principled_node.outputs["BSDF"], output_node.inputs["Surface"])
+
+        # assign textures to material:
+        #for filename in os.listdir(textures_folder):
+        for index, filename in enumerate(os.listdir(textures_folder)):
+            #check filetypes and join them
+            if filename.lower().endswith(file_types):
+                texture_type = self.get_texture_type(filename)
+                filepath = os.path.join(textures_folder, filename)
+
+                #Create an image node and apply texture 
+                image_node = nodes.new(type="ShaderNodeTexImage")
+                image_node.location = (-300, -400*index )
+                image_node.image = bpy.data.images.load(filepath)
+                #align better to bsdf
+                image_node.location.y += 800
+                                     
+                                        
+    def get_texture_type(self, filename):
+            """
+            Guess texture type based on the filename.
+            """
+            
+            
+            if "diffuse" in filename.lower() or "basecolor" in filename.lower():
+                return "Base Color"
+            elif "roughness" in filename.lower():
+                return "Roughness"
+            elif "normal" in filename.lower():
+                return "Normal"
+            elif "height" in filename.lower():
+                return "Height"
+            elif "Roughness" in filename.lower():
+                return "Roughness"
+            else:
+                return None        
+            
+        
 
 class OPEN_OT_FBXFolder(bpy.types.Operator):
     """Opens the FBX Export Folder"""
@@ -125,6 +217,8 @@ class OPEN_OT_FBXFolder(bpy.types.Operator):
         except Exception as e:
             self.report({'ERROR'}, f"Failed to open folder: {str(e)}")
         return {'FINISHED'}
+
+
 
 
 class VIEW3D_PT_QuickExporter(bpy.types.Panel):
@@ -142,10 +236,14 @@ class VIEW3D_PT_QuickExporter(bpy.types.Panel):
         row = layout.row()
         row.operator(OPEN_OT_FBXFolder.bl_idname,
                      text="Open the fbx folder")
+        row = layout.row()
+        row.operator(IMPORT_OT_Textures.bl_idname,
+                     text="Import Textures from Substance Painter")
+        
      
 
 
-classes = (VIEW3D_PT_QuickExporter, EXPORT_OT_Substancepainter_exporter,OPEN_OT_FBXFolder)
+classes = (VIEW3D_PT_QuickExporter, EXPORT_OT_Substancepainter_exporter,OPEN_OT_FBXFolder,IMPORT_OT_Textures)
 
 # Register the panel class
 def register():
