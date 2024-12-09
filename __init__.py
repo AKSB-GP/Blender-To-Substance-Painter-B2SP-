@@ -121,31 +121,44 @@ class IMPORT_OT_Textures(bpy.types.Operator):
         #Get active object
         obj = bpy.context.active_object
         
+        
         #texture folder for object:
         textures_folder = os.path.join(os.path.normpath("C:/Substancepainter/FBX"),obj.name,f"{obj.name}_textures")        
         
-        if not textures_folder:
-            self.report({"INFO"}, f"Texture folder {str(textures_folder)} does not exist")
-            return {'CANCELLED'}
+        if not textures_folder.find(obj.name): 
+            self.report({"INFO"}, f"Texture folder does not exist for {str(obj.name)}")
+            return {"CANCELLED"}
 
-        #Validate selection
-        if not obj or obj.type !="MESH":
-            self.report({"INFO"}, "Object is not a mesh or no object is selected")
-        
-        #Validate material, incase export function hasnt been used
-        if not obj.data.materials:
-            mat = bpy.data.materials.new(new=f"{obj.name}_Material")
-            mat.use_nodes = True
-            obj.data.materials.append(mat)
-        material = obj.data.materials[0]
-        #if material already exists, check if nodes are used
-        if not material.use_nodes:
-            material.use_nodes = True
-        
-        #Call assign textures method
-        self.assign_textures(material,textures_folder)
-        
-        return {"FINISHED"}
+        try:
+                
+            if not textures_folder:
+                self.report({"INFO"}, f"Texture folder {str(textures_folder)} does not exist")
+                
+
+            #Validate selection
+            if not obj or obj.type !="MESH":
+                self.report({"INFO"}, "Object is not a mesh or no object is selected")
+            
+            
+            #Validate material, incase export function hasnt been used
+            if not obj.data.materials:
+                mat = bpy.data.materials.new(new=f"{obj.name}_Material")
+                mat.use_nodes = True
+                obj.data.materials.append(mat)
+            material = obj.data.materials[0]
+            #if material already exists, check if nodes are used
+            if not material.use_nodes:
+                material.use_nodes = True
+            
+            
+            #Call assign textures method
+            self.assign_textures(material,textures_folder)
+            return {"FINISHED"}
+        except Exception as e:
+            self.report({"INFO"}, f"Texture folder does not exist for {str(obj.name)}")
+            return {"CANCELLED"}
+
+
         #obs! make sure node wrangler is enabled
     def assign_textures(self,material,textures_folder):
         #nodes and links of material
@@ -168,7 +181,6 @@ class IMPORT_OT_Textures(bpy.types.Operator):
         links.new(principled_node.outputs["BSDF"], output_node.inputs["Surface"])
 
         # assign textures to material:
-        #for filename in os.listdir(textures_folder):
         for index, filename in enumerate(os.listdir(textures_folder)):
             #check filetypes and join them
             if filename.lower().endswith(file_types):
@@ -181,15 +193,29 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                 image_node.image = bpy.data.images.load(filepath)
                 #align better to bsdf
                 image_node.location.y += 800
+                #connect to BSDF
+                if texture_type == "Base Color":
+                    links.new(image_node.outputs["Color"], principled_node.inputs["Base Color"])
+                elif texture_type == "Roughness":
+                    links.new(image_node.outputs["Color"], principled_node.inputs["Roughness"])
+                elif texture_type == "Metallic":
+                    links.new(image_node.outputs["Color"], principled_node.inputs["Metallic"])
+                    
+                
+                #Have cases for normal, height and opengl via checkbox class
+                elif texture_type == "Normal" :
+                    normal_node = nodes.new(type="ShaderNodeNormalMap")
+                    normal_node.location = (-200*index, 100)
+                    links.new(image_node.outputs["Color"], normal_node.inputs["Color"])
+                    links.new(normal_node.outputs["Normal"], principled_node.inputs["Normal"])
+                             
                                      
                                         
     def get_texture_type(self, filename):
             """
-            Guess texture type based on the filename.
+            Check  texture type based on the filename.
             """
-            
-            
-            if "diffuse" in filename.lower() or "basecolor" in filename.lower():
+            if "diffuse" in filename.lower() or "base_color" in filename.lower():
                 return "Base Color"
             elif "roughness" in filename.lower():
                 return "Roughness"
@@ -197,8 +223,8 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                 return "Normal"
             elif "height" in filename.lower():
                 return "Height"
-            elif "Roughness" in filename.lower():
-                return "Roughness"
+            elif "metallic" in filename.lower():
+                return "Metallic"
             else:
                 return None        
             
@@ -219,8 +245,6 @@ class OPEN_OT_FBXFolder(bpy.types.Operator):
         return {'FINISHED'}
 
 
-
-
 class VIEW3D_PT_QuickExporter(bpy.types.Panel):
     """UI Panel for quick export to Substance Painter"""
     bl_space_type = "VIEW_3D"
@@ -228,7 +252,9 @@ class VIEW3D_PT_QuickExporter(bpy.types.Panel):
     bl_category = "Quick Export"
     bl_label = "Quick Exporter"
 
+
     def draw(self, context):
+        scene = context.scene
         layout = self.layout
         row = layout.row()
         row.operator(EXPORT_OT_Substancepainter_exporter.bl_idname,
@@ -239,14 +265,19 @@ class VIEW3D_PT_QuickExporter(bpy.types.Panel):
         row = layout.row()
         row.operator(IMPORT_OT_Textures.bl_idname,
                      text="Import Textures from Substance Painter")
-        
-     
+        #register checkboxes in UI 
+        #TODO
+        layout.label(text="Import settings")
+
 
 
 classes = (VIEW3D_PT_QuickExporter, EXPORT_OT_Substancepainter_exporter,OPEN_OT_FBXFolder,IMPORT_OT_Textures)
 
+
+
 # Register the panel class
 def register():
+  
     for c in classes:
         bpy.utils.register_class(c)
 
