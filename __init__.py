@@ -5,10 +5,10 @@ import subprocess
 bl_info = {
     "name": "Blender to Substance painter",
     "description": "Export a mesh to Substance painter",
-    "author": "Alexander Kazakov",
+    "author": "Name",
     "version": (0, 1),
     "blender": (4, 2, 3),
-    "location": "View3D > UI",
+    "location": "View3D > UI > Tools",
     "warning": "",  # used for warning icon and text in addons panel
     "doc_url": "TBA",
     "tracker_url": "TBA",
@@ -16,7 +16,7 @@ bl_info = {
     "category": "Exporter",
 }
 
-#Move paths to seperate file
+#Move paths to seperate file or make them dynamic
 
 
 class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
@@ -110,26 +110,40 @@ class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
                 {'ERROR'}, f"Could not open Substance Painter: {str(e)}, {str(self.substance_painter_path)},{str(File)}")
 
 
-#one object at a time! test with multiple
+#one object at a time! test with multiple, check if in object mode
+
+
+
+
 class IMPORT_OT_Textures(bpy.types.Operator):
     bl_idname ="import.textures"
     bl_label = "import Textures"
-    
-    
-
+     
+    use_normal_map= bpy.props.BoolProperty(
+    name="use_normal_map",
+    description="Enable to use Normal Map",
+    default=True,
+    )
+    use_height_map= bpy.props.BoolProperty(
+        name="use_height_map",
+        description="Enable to use Height Map",
+        default=False,
+    )
+    use_bump_map= bpy.props.BoolProperty(
+        name="use_bump_map",
+        description="Enable to use Bump Map",
+        default=False,
+    ) 
     def execute(self,context):
         #Get active object
         obj = bpy.context.active_object
-        
-        
         #texture folder for object:
         textures_folder = os.path.join(os.path.normpath("C:/Substancepainter/FBX"),obj.name,f"{obj.name}_textures")        
-        
-        if not textures_folder.find(obj.name): 
-            self.report({"INFO"}, f"Texture folder does not exist for {str(obj.name)}")
-            return {"CANCELLED"}
-
+        #texturesettings = context.scene.textureSettings
         try:
+            if not textures_folder.find(obj.name): 
+                self.report({"INFO"}, f"Texture folder does not exist for {str(obj.name)}")
+
                 
             if not textures_folder:
                 self.report({"INFO"}, f"Texture folder {str(textures_folder)} does not exist")
@@ -149,14 +163,13 @@ class IMPORT_OT_Textures(bpy.types.Operator):
             #if material already exists, check if nodes are used
             if not material.use_nodes:
                 material.use_nodes = True
-            
-            
             #Call assign textures method
             self.assign_textures(material,textures_folder)
             return {"FINISHED"}
         except Exception as e:
             self.report({"INFO"}, f"Texture folder does not exist for {str(obj.name)}")
             return {"CANCELLED"}
+        
 
 
         #obs! make sure node wrangler is enabled
@@ -189,7 +202,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
 
                 #Create an image node and apply texture 
                 image_node = nodes.new(type="ShaderNodeTexImage")
-                image_node.location = (-300, -400*index )
+                image_node.location = (-800, -400*index )
                 image_node.image = bpy.data.images.load(filepath)
                 #align better to bsdf
                 image_node.location.y += 800
@@ -201,15 +214,28 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                 elif texture_type == "Metallic":
                     links.new(image_node.outputs["Color"], principled_node.inputs["Metallic"])
                     
-                
-                #Have cases for normal, height and opengl via checkbox class
-                elif texture_type == "Normal" :
+                #Check that these maps exist in the first place
+                elif texture_type == "Normal" and self.use_normal_map :
+                    self.report({"INFO"}, "NORMAL ELIF TRIGGERED")
                     normal_node = nodes.new(type="ShaderNodeNormalMap")
-                    normal_node.location = (-200*index, 100)
+                    normal_node.location = (-200*index, 400)
                     links.new(image_node.outputs["Color"], normal_node.inputs["Color"])
                     links.new(normal_node.outputs["Normal"], principled_node.inputs["Normal"])
-                             
-                                     
+
+                elif texture_type == "Height" and self.use_height_map :
+                    self.report({"INFO"}, "HEIGHT ELIF TRIGGERED")
+                    Height_node = nodes.new(type="ShaderNodeDisplacement")
+                    Height_node.location = (-200*index, 400)
+                    links.new(image_node.outputs["Color"], Height_node.inputs["Normal"])
+                    links.new(Height_node.outputs["Displacement"], principled_node.inputs["Normal"])
+                    
+                elif texture_type == "Bump" and self.use_bump_map :
+                    self.report({"INFO"}, "BUMP ELIF TRIGGERED")
+                    bump_node = nodes.new(type="ShaderNodeBump")
+                    bump_node.location = (-200*index, 400)
+                    links.new(image_node.outputs["Color"], bump_node.inputs["Normal"])
+                    links.new(bump_node.outputs["Normal"], principled_node.inputs["Normal"])
+      
                                         
     def get_texture_type(self, filename):
             """
@@ -225,10 +251,35 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                 return "Height"
             elif "metallic" in filename.lower():
                 return "Metallic"
-            else:
-                return None        
             
+            else:
+                return None      
+              
+class REMOVE_OT_UNUSED_TEXTURES(bpy.types.Operator):
+    '''Clears any unused texture nodes'''
+    bl_idname = "remove.unusedtextures"
+    bl_label = "Remove unused textures in material"
+    def execute(self, context):
+        obj = bpy.context.active_object
+        if not obj.data.materials or obj is None:
+            bpy.context.report({"WARNING"}, text="Object has no material or no object has been selected")
+        nodes = obj.data.materials[0].node_tree.nodes
+        for node in nodes: 
+            try:
+                if isinstance(node,bpy.types.ShaderNodeTexImage):
+                    
+                    if len(node.outputs[0].links) ==0:
+                        nodes.remove(node)
+
+            except Exception as e:
+                self.report({"INFO"}, f"An Error has occured: {e}")
+                
+        #realign the existing nodes?
         
+        
+        return {'FINISHED'}
+
+    
 
 class OPEN_OT_FBXFolder(bpy.types.Operator):
     """Opens the FBX Export Folder"""
@@ -243,6 +294,8 @@ class OPEN_OT_FBXFolder(bpy.types.Operator):
         except Exception as e:
             self.report({'ERROR'}, f"Failed to open folder: {str(e)}")
         return {'FINISHED'}
+
+
 
 
 class VIEW3D_PT_QuickExporter(bpy.types.Panel):
@@ -266,26 +319,31 @@ class VIEW3D_PT_QuickExporter(bpy.types.Panel):
         row.operator(IMPORT_OT_Textures.bl_idname,
                      text="Import Textures from Substance Painter")
         #register checkboxes in UI 
-        #TODO
         layout.label(text="Import settings")
+        row = layout.row()
+        """ row.prop(scene, "use_normal_map", text="Normal Map")
+        row = layout.row()
+        row.prop(scene, "use_height_map", text="Height Map")
+        row = layout.row()
+        row.prop(scene, "use_bump_map", text="Bump Map")    """     
+        layout.label(text="Cleanup functions")
+        row = layout.row()
+        row.operator(REMOVE_OT_UNUSED_TEXTURES.bl_idname,
+                     text="Remove unused textures")
+        
 
-
-
-classes = (VIEW3D_PT_QuickExporter, EXPORT_OT_Substancepainter_exporter,OPEN_OT_FBXFolder,IMPORT_OT_Textures)
-
+classes = (VIEW3D_PT_QuickExporter, EXPORT_OT_Substancepainter_exporter,OPEN_OT_FBXFolder,IMPORT_OT_Textures,REMOVE_OT_UNUSED_TEXTURES)
 
 
 # Register the panel class
 def register():
-  
+# storing property in scene for this example
     for c in classes:
         bpy.utils.register_class(c)
-
 
 def unregister():
     for c in classes:
         bpy.utils.unregister_class(c)
-
 
 if __name__ == "__main__":
     register()
