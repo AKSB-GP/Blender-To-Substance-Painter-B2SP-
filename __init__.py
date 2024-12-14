@@ -15,9 +15,33 @@ bl_info = {
     "support": "COMMUNITY",
     "category": "Exporter",
 }
+'''
+
+TODO
+refactor code, variables, make it easier to read and structure it
+a proper MD for the repo
+add more messages incase something doesnt exist (bump_map example)
+'''
+
 
 #Move paths to seperate file or make them dynamic
-
+class textureSettings(bpy.types.PropertyGroup):
+    use_normal_map: bpy.props.BoolProperty(
+    name="use_normal_map",
+    description="Enable to use Normal Map",
+    default=True,
+    )
+    use_height_map: bpy.props.BoolProperty(
+    name="use_height_map",
+    description="Enable to use Height Map",
+    default=False,
+    )
+    use_bump_map: bpy.props.BoolProperty(
+    name="use_bump_map",
+    description="Enable to use Bump Map",
+    default=False,
+    ) 
+    
 
 class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
     bl_idname = "export.substance_painter"
@@ -134,12 +158,15 @@ class IMPORT_OT_Textures(bpy.types.Operator):
         description="Enable to use Bump Map",
         default=False,
     ) 
+    
+    
     def execute(self,context):
         #Get active object
         obj = bpy.context.active_object
         #texture folder for object:
         textures_folder = os.path.join(os.path.normpath("C:/Substancepainter/FBX"),obj.name,f"{obj.name}_textures")        
-        #texturesettings = context.scene.textureSettings
+       
+
         try:
             if not textures_folder.find(obj.name): 
                 self.report({"INFO"}, f"Texture folder does not exist for {str(obj.name)}")
@@ -164,7 +191,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
             if not material.use_nodes:
                 material.use_nodes = True
             #Call assign textures method
-            self.assign_textures(material,textures_folder)
+            self.assign_textures(material,textures_folder,context.scene.texture_settings)
             return {"FINISHED"}
         except Exception as e:
             self.report({"INFO"}, f"Texture folder does not exist for {str(obj.name)}")
@@ -173,12 +200,13 @@ class IMPORT_OT_Textures(bpy.types.Operator):
 
 
         #obs! make sure node wrangler is enabled
-    def assign_textures(self,material,textures_folder):
+    def assign_textures(self,material,textures_folder,texture_settings):
         #nodes and links of material
         node_tree = material.node_tree
         nodes = node_tree.nodes
         links = node_tree.links
         file_types = (".png",".jpg",".jpeg")
+        node_x_displacement = 400 
         # Remove previous nodes to clear the workspace
         for node in nodes:
             nodes.remove(node)
@@ -215,24 +243,21 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                     links.new(image_node.outputs["Color"], principled_node.inputs["Metallic"])
                     
                 #Check that these maps exist in the first place
-                elif texture_type == "Normal" and self.use_normal_map :
-                    self.report({"INFO"}, "NORMAL ELIF TRIGGERED")
+                elif texture_type == "Normal" and texture_settings.use_normal_map :
                     normal_node = nodes.new(type="ShaderNodeNormalMap")
-                    normal_node.location = (-200*index, 400)
+                    normal_node.location = (image_node.location.x +node_x_displacement, image_node.location.y)
                     links.new(image_node.outputs["Color"], normal_node.inputs["Color"])
                     links.new(normal_node.outputs["Normal"], principled_node.inputs["Normal"])
 
-                elif texture_type == "Height" and self.use_height_map :
-                    self.report({"INFO"}, "HEIGHT ELIF TRIGGERED")
+                elif texture_type == "Height" and texture_settings.use_height_map :
                     Height_node = nodes.new(type="ShaderNodeDisplacement")
-                    Height_node.location = (-200*index, 400)
+                    Height_node.location = (image_node.location.x+node_x_displacement, image_node.location.y)
                     links.new(image_node.outputs["Color"], Height_node.inputs["Normal"])
                     links.new(Height_node.outputs["Displacement"], principled_node.inputs["Normal"])
                     
-                elif texture_type == "Bump" and self.use_bump_map :
-                    self.report({"INFO"}, "BUMP ELIF TRIGGERED")
+                elif texture_type == "Bump" and texture_settings.use_bump_map :
                     bump_node = nodes.new(type="ShaderNodeBump")
-                    bump_node.location = (-200*index, 400)
+                    bump_node.location = (image_node.location.x+node_x_displacement, image_node.location.y)
                     links.new(image_node.outputs["Color"], bump_node.inputs["Normal"])
                     links.new(bump_node.outputs["Normal"], principled_node.inputs["Normal"])
       
@@ -275,9 +300,22 @@ class REMOVE_OT_UNUSED_TEXTURES(bpy.types.Operator):
                 self.report({"INFO"}, f"An Error has occured: {e}")
                 
         #realign the existing nodes?
-        
+        self.realign_nodes(nodes)
         
         return {'FINISHED'}
+    def realign_nodes(self, nodes):
+        """
+        Realign the texture nodes for better structure
+        """
+        y_offset = 0
+        node_spacing = 300  # Adjust the spacing between nodes as needed
+        
+        #Arrange nodes, check only color output in shadernodeteximage
+        for node in nodes:
+            if isinstance(node,bpy.types.ShaderNodeTexImage):
+                node.location.y = y_offset
+                y_offset -= node_spacing
+                            
 
     
 
@@ -309,6 +347,8 @@ class VIEW3D_PT_QuickExporter(bpy.types.Panel):
     def draw(self, context):
         scene = context.scene
         layout = self.layout
+        texturesettings = context.scene.texture_settings
+
         row = layout.row()
         row.operator(EXPORT_OT_Substancepainter_exporter.bl_idname,
                      text="Export to Substance Painter")
@@ -320,30 +360,28 @@ class VIEW3D_PT_QuickExporter(bpy.types.Panel):
                      text="Import Textures from Substance Painter")
         #register checkboxes in UI 
         layout.label(text="Import settings")
-        row = layout.row()
-        """ row.prop(scene, "use_normal_map", text="Normal Map")
-        row = layout.row()
-        row.prop(scene, "use_height_map", text="Height Map")
-        row = layout.row()
-        row.prop(scene, "use_bump_map", text="Bump Map")    """     
+        layout.prop(texturesettings, "use_normal_map", text="Normal Map")
+        layout.prop(texturesettings, "use_height_map", text="Height Map")
+        layout.prop(texturesettings, "use_bump_map", text="Bump Map")
         layout.label(text="Cleanup functions")
         row = layout.row()
         row.operator(REMOVE_OT_UNUSED_TEXTURES.bl_idname,
                      text="Remove unused textures")
         
 
-classes = (VIEW3D_PT_QuickExporter, EXPORT_OT_Substancepainter_exporter,OPEN_OT_FBXFolder,IMPORT_OT_Textures,REMOVE_OT_UNUSED_TEXTURES)
+classes = (textureSettings,VIEW3D_PT_QuickExporter, EXPORT_OT_Substancepainter_exporter,OPEN_OT_FBXFolder,IMPORT_OT_Textures,REMOVE_OT_UNUSED_TEXTURES)
 
 
-# Register the panel class
 def register():
 # storing property in scene for this example
     for c in classes:
         bpy.utils.register_class(c)
+    bpy.types.Scene.texture_settings = bpy.props.PointerProperty(type=textureSettings)
 
 def unregister():
     for c in classes:
         bpy.utils.unregister_class(c)
+    del bpy.types.Scene.texture_settings
 
 if __name__ == "__main__":
     register()
