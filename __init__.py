@@ -3,7 +3,7 @@ import os
 import subprocess
 
 bl_info = {
-    "name": "Blender2Substance",
+    "name": "B2SP Linker",
     "description": "A addon for improving workflow between Blender and Substance painter. Adds exporting and importing to substance painter via blender",
     "author": "Alexander Kazakov",
     "version": (1, 0),
@@ -18,17 +18,15 @@ bl_info = {
 '''
 TODO
 refactor code, variables, make it easier to read and structure it
-a proper MD for the repo
-add more messages incase something doesnt exist (bump_map example)
 '''
 
 #--------------------------------------------------------------------------------
 # PROPERTIES
 #--------------------------------------------------------------------------------
 
-class TextureSettings(bpy.types.PropertyGroup):
+class texture_settings(bpy.types.PropertyGroup):
     '''
-    Class which handles which textures to include during the import 
+    Class that handles which textures to include during the import 
     from Substance Painter
     '''
     use_normal_map: bpy.props.BoolProperty(
@@ -48,11 +46,11 @@ class TextureSettings(bpy.types.PropertyGroup):
     ) 
     
 #--------------------------------------------------------------------------------
-# OPERATORS
+# EXPORT AND IMPORT OPERATORS
 #--------------------------------------------------------------------------------
 
 
-class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
+class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
     '''
     Class to handle the export from Blender to Substance painter
     
@@ -85,7 +83,7 @@ class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
         return {'FINISHED'}
     
 
-    def material_check(self,obj):
+    def check_material(self,obj):
 
         if len(obj.data.materials) == 0: 
             
@@ -103,7 +101,7 @@ class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
     # Set dynamic path for each object
             if obj.type == 'MESH':
         
-                self.material_check(obj)
+                self.check_material(obj)
                 #Create object folder
                 object_folder = os.path.join(self.export_folder, obj.name)
                 os.makedirs(object_folder, exist_ok=True)
@@ -129,14 +127,14 @@ class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
                 #Normalize the path
                 object_path = export_path.replace("\\", "/")
                 # Attempt to open substance painter
-                self.open_substancepainter(object_path)
+                self.open_substance_painter(object_path)
                 self.report({"INFO"}, f"object path {object_path}")
                 return object_path
             else:    
                 self.report({"WARNING"}, f"{obj.name} is not a mesh object, skipping mesh check.")
                 return False
 
-    def open_substancepainter(self,File):
+    def open_substance_painter(self,File):
         try:
             args = [self.substance_painter_path, "--mesh", File]
             subprocess.Popen(args, stdout=subprocess.PIPE, text=True)
@@ -150,7 +148,7 @@ class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
 
 class IMPORT_OT_Textures(bpy.types.Operator):
     '''
-    Handles import from Substance Painter back to Blender
+    Operator to handle importing textures from Substance Painter back to Blender
     '''
     bl_idname ="import.textures"
     bl_label = "import Textures"
@@ -165,6 +163,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
        
 
         try:
+            #Validate selection
             if not textures_folder.find(obj.name): 
                 self.report({"INFO"}, f"Texture folder does not exist for {str(obj.name)}")
 
@@ -173,21 +172,19 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                 self.report({"INFO"}, f"Texture folder {str(textures_folder)} does not exist")
                 
 
-            #Validate selection
             if not obj or obj.type !="MESH":
                 self.report({"INFO"}, "Object is not a mesh or no object is selected")
             
             
-            #Validate material, incase export function hasnt been used
             if not obj.data.materials:
                 mat = bpy.data.materials.new(new=f"{obj.name}_Material")
                 mat.use_nodes = True
                 obj.data.materials.append(mat)
             material = obj.data.materials[0]
-            #if material already exists, check if nodes are used
             if not material.use_nodes:
                 material.use_nodes = True
-            #Call assign textures method
+            
+            #Assign textures to material
             self.assign_textures(material,textures_folder,context.scene.texture_settings)
             return {"FINISHED"}
         except Exception as e:
@@ -261,7 +258,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                     bump_node.location = (image_node.location.x+node_x_displacement, image_node.location.y)
                     links.new(image_node.outputs["Color"], bump_node.inputs["Normal"])
                     links.new(bump_node.outputs["Normal"], principled_node.inputs["Normal"])
-        self.report({"INFO"}, f"The following textures were imported {str(textures_assigned)}")
+        self.report({"INFO"}, f"{str(len(textures_assigned))} textures were imported {str(textures_assigned)}")
         self.report({"INFO"}, "If a texture is missing or wasnt assigned then check the objects texture folder or the node editor ")
       
                                         
@@ -282,7 +279,11 @@ class IMPORT_OT_Textures(bpy.types.Operator):
             
             else:
                 return None      
-              
+            
+#--------------------------------------------------------------------------------
+# UTILITY OPERATORS 
+#--------------------------------------------------------------------------------
+  
 class REMOVE_OT_UNUSED_TEXTURES(bpy.types.Operator):
     '''Removes any unused image texture nodes'''
     bl_idname = "remove.unusedtextures"
@@ -300,8 +301,7 @@ class REMOVE_OT_UNUSED_TEXTURES(bpy.types.Operator):
                         nodes.remove(node)
 
             except Exception as e:
-                self.report({"INFO"}, f"An Error has occured: {e}")
-                
+                self.report({"INFO"}, f"An Error has occured: {e}")  
         self.realign_nodes(nodes)
         
         return {'FINISHED'}
@@ -312,7 +312,7 @@ class REMOVE_OT_UNUSED_TEXTURES(bpy.types.Operator):
         y_offset = 0
         node_spacing = 300  
         
-        #Arrange nodes, looks for textureimage nodes only
+        #Arrange nodes, searches for textureimage nodes only
         for node in nodes:
             if isinstance(node,bpy.types.ShaderNodeTexImage):
                 node.location.y = y_offset
@@ -336,48 +336,73 @@ class OPEN_OT_FBXFolder(bpy.types.Operator):
         return {'FINISHED'}
 
 
+#--------------------------------------------------------------------------------
+# UI PANELs
+#--------------------------------------------------------------------------------
 
 
-class VIEW3D_PT_QuickExporter(bpy.types.Panel):
-    """UI Panel for the addon"""
+
+class VIEW3D_PT_QuickExporter_ExportImport(bpy.types.Panel):
+    """Export/Import Panel for the addon"""
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Quick Export"
-    bl_label = "Quick Exporter"
-
+    bl_category = "B2SP Linker"
+    bl_label = "Export/Import Textures"
+    bl_icon = "EXPORT"  
 
     def draw(self, context):
-        scene = context.scene
-        layout = self.layout
-        TextureSettings = context.scene.texture_settings
-        #add row and operators
-        row = layout.row()
-        row.operator(EXPORT_OT_Substancepainter_exporter.bl_idname,
-                     text="Export to Substance Painter")
-        row = layout.row()
-        row.operator(OPEN_OT_FBXFolder.bl_idname,
-                     text="Open the fbx folder")
-        row = layout.row()
-        row.operator(IMPORT_OT_Textures.bl_idname,
-                     text="Import Textures from Substance Painter")
-        #register checkboxes in UI 
-        layout.label(text="Import settings")
-        layout.prop(TextureSettings, "use_normal_map", text="Normal Map")
-        layout.prop(TextureSettings, "use_height_map", text="Height Map")
-        layout.prop(TextureSettings, "use_bump_map", text="Bump Map")
-        layout.label(text="Cleanup functions")
-        row = layout.row()
-        row.operator(REMOVE_OT_UNUSED_TEXTURES.bl_idname,
-                     text="Remove unused textures")
-        
+        layout = self.layout        
+        col = layout.column(align=True)
+        col.operator(EXPORT_OT_SubstancePainterExporter.bl_idname,
+                     text="Export to Substance Painter", icon="EXPORT")
+        col.operator(IMPORT_OT_Textures.bl_idname,
+                     text="Import from Substance Painter", icon='IMPORT')
+        col.operator(OPEN_OT_FBXFolder.bl_idname,
+                     text="Open Object folder", icon="FILE_FOLDER")
 
-classes = (TextureSettings,VIEW3D_PT_QuickExporter, EXPORT_OT_Substancepainter_exporter,OPEN_OT_FBXFolder,IMPORT_OT_Textures,REMOVE_OT_UNUSED_TEXTURES)
+
+class VIEW3D_PT_QuickExporter_ImportSettings(bpy.types.Panel):
+    """Texture Import Settings Panel for the addon"""
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "B2SP Linker"
+    bl_label = "Import Settings"
+    bl_icon="SETTINGS"
+    
+    def draw(self, context):
+        layout = self.layout
+        texture_settings = context.scene.texture_settings
+        col = layout.column()
+        col.prop(texture_settings, "use_normal_map", text="Normal Map")
+        col.prop(texture_settings, "use_height_map", text="Height Map")
+        col.prop(texture_settings, "use_bump_map", text="Bump Map")
+
+
+class VIEW3D_PT_QuickExporter_Cleanup(bpy.types.Panel):
+    """Cleanup Functions Panel for the addon"""
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "B2SP Linker"
+    bl_label = "Cleanup Functions"
+    
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column()
+        col.operator(REMOVE_OT_UNUSED_TEXTURES.bl_idname,
+                     text="Remove unused image textures",icon="TRASH")        
+
+
+
+classes = (texture_settings,VIEW3D_PT_QuickExporter_ExportImport,VIEW3D_PT_QuickExporter_ImportSettings, EXPORT_OT_SubstancePainterExporter,VIEW3D_PT_QuickExporter_Cleanup,OPEN_OT_FBXFolder,IMPORT_OT_Textures,REMOVE_OT_UNUSED_TEXTURES)
+
+
+
 
 #Register and unregister classes
 def register():
     for c in classes:
         bpy.utils.register_class(c)
-    bpy.types.Scene.texture_settings = bpy.props.PointerProperty(type=TextureSettings)
+    bpy.types.Scene.texture_settings = bpy.props.PointerProperty(type=texture_settings)
 
 def unregister():
     for c in (classes):
