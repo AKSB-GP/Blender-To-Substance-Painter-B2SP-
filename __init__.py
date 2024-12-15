@@ -74,6 +74,7 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
         if not objects : 
             self.report({"WARNING"}, "No object selected")
         # Export each object and track success
+        
         try:
             for obj in objects:
                 if self.export_object(obj):
