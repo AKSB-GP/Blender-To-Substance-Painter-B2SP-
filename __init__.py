@@ -3,29 +3,34 @@ import os
 import subprocess
 
 bl_info = {
-    "name": "Blender to Substance painter",
-    "description": "Export a mesh to Substance painter",
-    "author": "Name",
-    "version": (0, 1),
+    "name": "Blender2Substance",
+    "description": "A addon for improving workflow between Blender and Substance painter. Adds exporting and importing to substance painter via blender",
+    "author": "Alexander Kazakov",
+    "version": (1, 0),
     "blender": (4, 2, 3),
     "location": "View3D > UI > Tools",
-    "warning": "",  # used for warning icon and text in addons panel
-    "doc_url": "TBA",
+    "warning": "",  
+    "doc_url": "https://github.com/AKSB-GP/BlendertoSubstanceexporter",
     "tracker_url": "TBA",
     "support": "COMMUNITY",
-    "category": "Exporter",
+    "category": "Import-Export",
 }
 '''
-
 TODO
 refactor code, variables, make it easier to read and structure it
 a proper MD for the repo
 add more messages incase something doesnt exist (bump_map example)
 '''
 
+#--------------------------------------------------------------------------------
+# PROPERTIES
+#--------------------------------------------------------------------------------
 
-#Move paths to seperate file or make them dynamic
-class textureSettings(bpy.types.PropertyGroup):
+class TextureSettings(bpy.types.PropertyGroup):
+    '''
+    Class which handles which textures to include during the import 
+    from Substance Painter
+    '''
     use_normal_map: bpy.props.BoolProperty(
     name="use_normal_map",
     description="Enable to use Normal Map",
@@ -42,8 +47,17 @@ class textureSettings(bpy.types.PropertyGroup):
     default=False,
     ) 
     
+#--------------------------------------------------------------------------------
+# OPERATORS
+#--------------------------------------------------------------------------------
+
 
 class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
+    '''
+    Class to handle the export from Blender to Substance painter
+    
+    '''
+    
     bl_idname = "export.substance_painter"
     bl_label = "Export to Substance Painter"
     
@@ -84,7 +98,7 @@ class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
             self.report({"INFO"}, f"{obj.name} already has an material")
 
 
-
+    #Have property for as a single object or seperate
     def export_object(self, obj):
     # Set dynamic path for each object
             if obj.type == 'MESH':
@@ -108,7 +122,6 @@ class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
                                                 global_scale=1.0, 
                                                 apply_unit_scale=True, 
                                                 use_selection=True)
-                # Print info
                 self.report({"INFO"}, f"Exported {obj.name} to {file}")
                 self.report({"INFO"}, f"Opening {obj.name} in Substance Painter")
 
@@ -134,31 +147,15 @@ class EXPORT_OT_Substancepainter_exporter(bpy.types.Operator):
                 {'ERROR'}, f"Could not open Substance Painter: {str(e)}, {str(self.substance_painter_path)},{str(File)}")
 
 
-#one object at a time! test with multiple, check if in object mode
-
-
-
 
 class IMPORT_OT_Textures(bpy.types.Operator):
+    '''
+    Handles import from Substance Painter back to Blender
+    '''
     bl_idname ="import.textures"
     bl_label = "import Textures"
      
-    use_normal_map= bpy.props.BoolProperty(
-    name="use_normal_map",
-    description="Enable to use Normal Map",
-    default=True,
-    )
-    use_height_map= bpy.props.BoolProperty(
-        name="use_height_map",
-        description="Enable to use Height Map",
-        default=False,
-    )
-    use_bump_map= bpy.props.BoolProperty(
-        name="use_bump_map",
-        description="Enable to use Bump Map",
-        default=False,
-    ) 
-    
+
     
     def execute(self,context):
         #Get active object
@@ -199,14 +196,18 @@ class IMPORT_OT_Textures(bpy.types.Operator):
         
 
 
-        #obs! make sure node wrangler is enabled
     def assign_textures(self,material,textures_folder,texture_settings):
-        #nodes and links of material
+        '''
+        Method to assign material and textures to the selected material,
+        Takes the material, the objects texture folder and 
+        the users texture settings as args
+        '''
         node_tree = material.node_tree
         nodes = node_tree.nodes
         links = node_tree.links
         file_types = (".png",".jpg",".jpeg")
-        node_x_displacement = 400 
+        node_x_displacement = 400
+        textures_assigned = [] 
         # Remove previous nodes to clear the workspace
         for node in nodes:
             nodes.remove(node)
@@ -227,7 +228,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
             if filename.lower().endswith(file_types):
                 texture_type = self.get_texture_type(filename)
                 filepath = os.path.join(textures_folder, filename)
-
+                textures_assigned.append(filename)
                 #Create an image node and apply texture 
                 image_node = nodes.new(type="ShaderNodeTexImage")
                 image_node.location = (-800, -400*index )
@@ -260,11 +261,13 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                     bump_node.location = (image_node.location.x+node_x_displacement, image_node.location.y)
                     links.new(image_node.outputs["Color"], bump_node.inputs["Normal"])
                     links.new(bump_node.outputs["Normal"], principled_node.inputs["Normal"])
+        self.report({"INFO"}, f"The following textures were imported {str(textures_assigned)}")
+        self.report({"INFO"}, "If a texture is missing or wasnt assigned then check the objects texture folder or the node editor ")
       
                                         
     def get_texture_type(self, filename):
             """
-            Check  texture type based on the filename.
+            Returns the texture type
             """
             if "diffuse" in filename.lower() or "base_color" in filename.lower():
                 return "Base Color"
@@ -281,7 +284,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                 return None      
               
 class REMOVE_OT_UNUSED_TEXTURES(bpy.types.Operator):
-    '''Clears any unused texture nodes'''
+    '''Removes any unused image texture nodes'''
     bl_idname = "remove.unusedtextures"
     bl_label = "Remove unused textures in material"
     def execute(self, context):
@@ -299,18 +302,17 @@ class REMOVE_OT_UNUSED_TEXTURES(bpy.types.Operator):
             except Exception as e:
                 self.report({"INFO"}, f"An Error has occured: {e}")
                 
-        #realign the existing nodes?
         self.realign_nodes(nodes)
         
         return {'FINISHED'}
     def realign_nodes(self, nodes):
         """
-        Realign the texture nodes for better structure
+        Realigns the remaining texture nodes for better structure
         """
         y_offset = 0
-        node_spacing = 300  # Adjust the spacing between nodes as needed
+        node_spacing = 300  
         
-        #Arrange nodes, check only color output in shadernodeteximage
+        #Arrange nodes, looks for textureimage nodes only
         for node in nodes:
             if isinstance(node,bpy.types.ShaderNodeTexImage):
                 node.location.y = y_offset
@@ -337,7 +339,7 @@ class OPEN_OT_FBXFolder(bpy.types.Operator):
 
 
 class VIEW3D_PT_QuickExporter(bpy.types.Panel):
-    """UI Panel for quick export to Substance Painter"""
+    """UI Panel for the addon"""
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Quick Export"
@@ -347,8 +349,8 @@ class VIEW3D_PT_QuickExporter(bpy.types.Panel):
     def draw(self, context):
         scene = context.scene
         layout = self.layout
-        texturesettings = context.scene.texture_settings
-
+        TextureSettings = context.scene.texture_settings
+        #add row and operators
         row = layout.row()
         row.operator(EXPORT_OT_Substancepainter_exporter.bl_idname,
                      text="Export to Substance Painter")
@@ -360,26 +362,25 @@ class VIEW3D_PT_QuickExporter(bpy.types.Panel):
                      text="Import Textures from Substance Painter")
         #register checkboxes in UI 
         layout.label(text="Import settings")
-        layout.prop(texturesettings, "use_normal_map", text="Normal Map")
-        layout.prop(texturesettings, "use_height_map", text="Height Map")
-        layout.prop(texturesettings, "use_bump_map", text="Bump Map")
+        layout.prop(TextureSettings, "use_normal_map", text="Normal Map")
+        layout.prop(TextureSettings, "use_height_map", text="Height Map")
+        layout.prop(TextureSettings, "use_bump_map", text="Bump Map")
         layout.label(text="Cleanup functions")
         row = layout.row()
         row.operator(REMOVE_OT_UNUSED_TEXTURES.bl_idname,
                      text="Remove unused textures")
         
 
-classes = (textureSettings,VIEW3D_PT_QuickExporter, EXPORT_OT_Substancepainter_exporter,OPEN_OT_FBXFolder,IMPORT_OT_Textures,REMOVE_OT_UNUSED_TEXTURES)
+classes = (TextureSettings,VIEW3D_PT_QuickExporter, EXPORT_OT_Substancepainter_exporter,OPEN_OT_FBXFolder,IMPORT_OT_Textures,REMOVE_OT_UNUSED_TEXTURES)
 
-
+#Register and unregister classes
 def register():
-# storing property in scene for this example
     for c in classes:
         bpy.utils.register_class(c)
-    bpy.types.Scene.texture_settings = bpy.props.PointerProperty(type=textureSettings)
+    bpy.types.Scene.texture_settings = bpy.props.PointerProperty(type=TextureSettings)
 
 def unregister():
-    for c in classes:
+    for c in (classes):
         bpy.utils.unregister_class(c)
     del bpy.types.Scene.texture_settings
 
