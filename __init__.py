@@ -17,7 +17,7 @@ bl_info = {
 }
 '''
 TODO
-refactor code, variables, make it easier to read and structure it
+Dynamic paths, "publish" it, make extension of it
 '''
 
 #--------------------------------------------------------------------------------
@@ -52,10 +52,8 @@ class texture_settings(bpy.types.PropertyGroup):
 
 class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
     '''
-    Class to handle the export from Blender to Substance painter
-    
+    Class to handle the export from Blender to Substance Painter
     '''
-    
     bl_idname = "export.substance_painter"
     bl_label = "Export to Substance Painter"
     
@@ -69,82 +67,81 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
         # Ensure export folder exists
         if not os.path.exists(self.export_folder):
             os.makedirs(self.export_folder)
+        
         # Get selected objects
         objects = context.selected_objects
-        if not objects : 
+        if not objects: 
             self.report({"WARNING"}, "No object selected")
-        # Export each object and track success
+            return {'CANCELLED'}
         
+        # List to store the export paths
+        export_paths = []
+
+        # Export each object and track success
         try:
             for obj in objects:
                 if self.export_object(obj):
-                    self.report({"INFO"},f"Successfully exported {obj.name}")
-        except Exception as e:
-            self.report({"ERROR"}, f"Failed to export {obj.name}, the error: {str(e)}")
-        return {'FINISHED'}
-    
-
-    def check_material(self,obj):
-
-        if len(obj.data.materials) == 0: 
+                    export_paths.append(self.export_object(obj))
             
-            self.report({"INFO"}, f"No material on { obj.name}, creating new one")            
+            # If there are export paths, open Substance Painter with the objects
+            if export_paths:
+                self.open_substance_painter(export_paths)
+            return {'FINISHED'}
+        except Exception as e:
+            self.report({"ERROR"}, f"Failed to export objects, the error: {str(e)}")
+            return {'CANCELLED'}
+    
+    def check_material(self, obj):
+        '''
+        checks if object has any materials and nodes
+        '''
+        if len(obj.data.materials) == 0: 
+            self.report({"INFO"}, f"No material on {obj.name}, creating new one")            
             new_material = bpy.data.materials.new(name=f"{obj.name}_material")
-            new_material.use_nodes = True  # Enable nodes if you want shader control
+            new_material.use_nodes = True  
             obj.data.materials.append(new_material)
             self.report({"INFO"}, f"{obj.name} has a {obj.name}_material added to it")
         else:
-            self.report({"INFO"}, f"{obj.name} already has an material")
+            self.report({"INFO"}, f"{obj.name} already has a material")
 
-
-    #Have property for as a single object or seperate
     def export_object(self, obj):
-    # Set dynamic path for each object
-            if obj.type == 'MESH':
-        
-                self.check_material(obj)
-                #Create object folder
-                object_folder = os.path.join(self.export_folder, obj.name)
-                os.makedirs(object_folder, exist_ok=True)
+        '''
+        Return the fbx filepath and exports the mesh from blender to teh specificed folderpath
+        '''
+        if obj.type == 'MESH':
+            self.check_material(obj)
+            object_folder = os.path.join(self.export_folder, obj.name)
+            os.makedirs(object_folder, exist_ok=True)
 
-                # Create a texture folder inside the object folder
-                texture_folder_name = f"{obj.name}_textures" 
-                texture_folder = os.path.join(object_folder, texture_folder_name)
-                os.makedirs(texture_folder, exist_ok=True)
-                
-                #Set final exportpath and name
-                export_name = f"{obj.name}.fbx"
-                export_path = os.path.normpath(os.path.join(object_folder, export_name))
+            texture_folder_name = f"{obj.name}_textures" 
+            texture_folder = os.path.join(object_folder, texture_folder_name)
+            os.makedirs(texture_folder, exist_ok=True)
+            
+            export_name = f"{obj.name}.fbx"
+            export_path = os.path.normpath(os.path.join(object_folder, export_name))
 
-                # Export the selected object
-                file = bpy.ops.export_scene.fbx(filepath=export_path, 
-                                                global_scale=1.0, 
-                                                apply_unit_scale=True, 
-                                                use_selection=True)
-                self.report({"INFO"}, f"Exported {obj.name} to {file}")
-                self.report({"INFO"}, f"Opening {obj.name} in Substance Painter")
+            bpy.ops.export_scene.fbx(filepath=export_path, 
+                                     global_scale=1.0, 
+                                     apply_unit_scale=True, 
+                                     use_selection=True)
+            self.report({"INFO"}, f"Exported {obj.name} to {export_path}")
+            return export_path
+        else:    
+            self.report({"WARNING"}, f"{obj.name} is not a mesh object, skipping mesh check.")
+            return None
 
-
-                #Normalize the path
-                object_path = export_path.replace("\\", "/")
-                # Attempt to open substance painter
-                self.open_substance_painter(object_path)
-                self.report({"INFO"}, f"object path {object_path}")
-                return object_path
-            else:    
-                self.report({"WARNING"}, f"{obj.name} is not a mesh object, skipping mesh check.")
-                return False
-
-    def open_substance_painter(self,File):
+    def open_substance_painter(self, export_paths):
+        '''
+        Combine all mesh filepaths into a single list of arguments through a list comprehension
+        results in [SP_exe, --mesh, mesh_path, --mesh, mesh_path, etc] 
+        which opens substance painter with the selected meshes 
+        '''
         try:
-            args = [self.substance_painter_path, "--mesh", File]
+            args = [self.substance_painter_path] + [mesh for path in export_paths for mesh in ["--mesh", path]]
             subprocess.Popen(args, stdout=subprocess.PIPE, text=True)
-            # Run Substance Painter
-            self.report({"INFO"}, f"Trying to open Substance Painter at {str(self.substance_painter_path)} with FBX {File}")
+            self.report({"INFO"}, f"Trying to open Substance Painter with FBX files: {', '.join(export_paths)}")
         except Exception as e:
-            self.report(
-                {'ERROR'}, f"Could not open Substance Painter: {str(e)}, {str(self.substance_painter_path)},{str(File)}")
-
+            self.report({'ERROR'}, f"Could not open Substance Painter: {str(e)}")
 
 
 class IMPORT_OT_Textures(bpy.types.Operator):
@@ -157,9 +154,8 @@ class IMPORT_OT_Textures(bpy.types.Operator):
 
     
     def execute(self,context):
-        #Get active object
+        #Get active object and its texture folder
         obj = bpy.context.active_object
-        #texture folder for object:
         textures_folder = os.path.join(os.path.normpath("C:/Substancepainter/FBX"),obj.name,f"{obj.name}_textures")        
        
 
@@ -167,16 +163,10 @@ class IMPORT_OT_Textures(bpy.types.Operator):
             #Validate selection
             if not textures_folder.find(obj.name): 
                 self.report({"INFO"}, f"Texture folder does not exist for {str(obj.name)}")
-
-                
             if not textures_folder:
                 self.report({"INFO"}, f"Texture folder {str(textures_folder)} does not exist")
-                
-
             if not obj or obj.type !="MESH":
                 self.report({"INFO"}, "Object is not a mesh or no object is selected")
-            
-            
             if not obj.data.materials:
                 mat = bpy.data.materials.new(new=f"{obj.name}_Material")
                 mat.use_nodes = True
@@ -265,7 +255,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                                         
     def get_texture_type(self, filename):
             """
-            Returns the texture type
+            Returns the texture type by name
             """
             if "diffuse" in filename.lower() or "base_color" in filename.lower():
                 return "Base Color"
@@ -286,7 +276,9 @@ class IMPORT_OT_Textures(bpy.types.Operator):
 #--------------------------------------------------------------------------------
   
 class REMOVE_OT_UNUSED_TEXTURES(bpy.types.Operator):
-    '''Removes any unused image texture nodes'''
+    '''
+    Removes any unused image texture nodes
+    '''
     bl_idname = "remove.unusedtextures"
     bl_label = "Remove unused textures in material"
     def execute(self, context):
@@ -313,7 +305,7 @@ class REMOVE_OT_UNUSED_TEXTURES(bpy.types.Operator):
         y_offset = 0
         node_spacing = 300  
         
-        #Arrange nodes, searches for textureimage nodes only
+        #Arranges nodes, searches for textureimage nodes only
         for node in nodes:
             if isinstance(node,bpy.types.ShaderNodeTexImage):
                 node.location.y = y_offset
@@ -323,7 +315,9 @@ class REMOVE_OT_UNUSED_TEXTURES(bpy.types.Operator):
     
 
 class OPEN_OT_FBXFolder(bpy.types.Operator):
-    """Opens the FBX Export Folder"""
+    """
+    Opens the FBX Export Folder
+    """
     bl_idname = "open.fbx_folder"
     bl_label = "Open FBX Folder"
 
