@@ -30,7 +30,13 @@ export_folder = os.path.normpath("C:/Substancepainter/FBX")
 
 substance_painter_path = os.path.normpath(
     "C:/Program Files/Adobe/Adobe Substance 3D Painter/Adobe Substance 3D Painter.exe")
+
+-register folderpathsettings class and set pointer for properties
+-adjust existing code for the paths
+-test if it works the same, then move on other projects
 '''
+
+
 
 class FolderPathSettings(bpy.types.PropertyGroup):
     '''SP.exe and object folders path properties'''
@@ -62,19 +68,11 @@ class FolderPathSettings(bpy.types.PropertyGroup):
 
     def set_export_folder(self, substancepainter_path):
         '''Creates the export folder path'''
-        if not os.path.exists(substancepainter_path.parent / "Exports"):
-            exportfolder = os.makedirs(substancepainter_path.parent / "Exports")
-            self.export_folder = os.path.normpath(exportfolder)
+        folder_path = os.path.exists(substancepainter_path.parent / "Exports")
+        if not folder_path:
+            self.export_folder = os.path.normpath(folder_path)
     
-    def update_substance_painter_path(self):
-        '''used if path has been changed'''
-        new_path = self.set_substance_painter()
-        if new_path:
-            self.substance_painter_exe = os.path.norm(new_path)
-        else:
-            self.report({"WARNING"},f"Substance Painter was not found on your machine at {new_path}")
-
-        
+   
 class texture_settings(bpy.types.PropertyGroup):
     '''
     Class that handles which textures to include during the import 
@@ -95,9 +93,6 @@ class texture_settings(bpy.types.PropertyGroup):
     description="Enable to use Bump Map",
     default=False,
     ) 
-    
-    
-    
     
     
 #--------------------------------------------------------------------------------
