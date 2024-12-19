@@ -1,7 +1,6 @@
 import bpy
 import os
 import subprocess
-from pathlib import Path
 
 bl_info = {
     "name": "B2SP Linker",
@@ -25,54 +24,8 @@ Dynamic paths, "publish" it, make extension of it
 # PROPERTIES
 #--------------------------------------------------------------------------------
 
-'''
-export_folder = os.path.normpath("C:/Substancepainter/FBX")
-
-substance_painter_path = os.path.normpath(
-    "C:/Program Files/Adobe/Adobe Substance 3D Painter/Adobe Substance 3D Painter.exe")
-
--register folderpathsettings class and set pointer for properties
--adjust existing code for the paths
--test if it works the same, then move on other projects
-'''
 
 
-
-class FolderPathSettings(bpy.types.PropertyGroup):
-    '''SP.exe and object folders path properties'''
-    #C:/
-    #Possible drives where .exe is
-    drives = [f"{drive}:/" for drive in "CDEFGHIJKLMNOPQRSTUVWXYZ" if Path(f"{drive}:/").exists()]
-    #.exe string prop and folder prop
-    substance_painter_exe: bpy.props.StringProperty(
-        name="Adobe Substance 3D Painter",
-        description="Path to substance painters .exe",
-        default =os.path.normpath("C:/Program Files/Adobe/Adobe Substance 3D Painter/Adobe Substance 3D Painter.exe")
-        )
-    export_folder: bpy.props.StringProperty(
-        name="exportfolder",
-        descrpition="Folder to export objects to",
-        default =os.path.normpath("C:/Program Files/Adobe/Adobe Substance 3D Painter")
-        )
-                                                    
-  
-    def set_substance_painter(self):
-        '''Searches and tries to set the path for substance painters .exe file'''
-        for drive in self.drives:
-            for file_path in Path(drive).rglob("*.exe"):
-                if "Adobe Substance 3D Painter" in file_path and file_path.name.lower().endswith(".exe"):
-                    self.substance_painter_exe = os.path.normpath(str(file_path))
-                    return str(file_path)
-        else:
-            self.report({"WARNING"},"Substance Painter was not found on your machine")
-
-    def set_export_folder(self, substancepainter_path):
-        '''Creates the export folder path'''
-        folder_path = os.path.exists(substancepainter_path.parent / "Exports")
-        if not folder_path:
-            self.export_folder = os.path.normpath(folder_path)
-    
-   
 class texture_settings(bpy.types.PropertyGroup):
     '''
     Class that handles which textures to include during the import 
@@ -94,10 +47,23 @@ class texture_settings(bpy.types.PropertyGroup):
     default=False,
     ) 
     
-    
 #--------------------------------------------------------------------------------
 # EXPORT AND IMPORT OPERATORS
 #--------------------------------------------------------------------------------
+'''
+set painter paths in preference
+export_folder in preferences
+create object folder with subfolder of textures like before
+have function which auto detects for windwos
+get_preferencs --> get paths from preferences --> set paths 
+
+if path doesnt exist for texture set as
+
+    textures_path = Path(bpy.path.abspath('//'))
+
+
+'''
+
 
 
 class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
@@ -107,6 +73,7 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
     bl_idname = "export.substance_painter"
     bl_label = "Export to Substance Painter"
     
+    
     # Base paths
     export_folder = os.path.normpath("C:/Substancepainter/FBX")
     
@@ -114,6 +81,7 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
         "C:/Program Files/Adobe/Adobe Substance 3D Painter/Adobe Substance 3D Painter.exe")
 
     def execute(self, context):
+       
         # Ensure export folder exists
         if not os.path.exists(self.export_folder):
             os.makedirs(self.export_folder)
@@ -187,7 +155,6 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
         which opens substance painter with the selected meshes 
         '''
         try:
-            #simplfiy pls
             args = [self.substance_painter_path] + [mesh for path in export_paths for mesh in ["--mesh", path]]
             subprocess.Popen(args, stdout=subprocess.PIPE, text=True)
             self.report({"INFO"}, f"Trying to open Substance Painter with FBX files: {', '.join(export_paths)}")
@@ -386,6 +353,64 @@ class OPEN_OT_FBXFolder(bpy.types.Operator):
 # UI PANELs
 #--------------------------------------------------------------------------------
 
+#adjust so that the project usees preferences paths instead of hardcoded
+#adjust so that a new export folder is created if none exists
+#reorganize the file for readability and fix labels, text etc
+
+class OPEN_OT_addon_prefs_example(bpy.types.Operator):
+    bl_idname = "open.addon_prefs_example"
+    bl_label = "Path preferences"
+
+    def execute(self, context):
+        preferences = context.preferences
+        addon_prefs = preferences.addons[__name__].preferences
+
+        info = [addon_prefs.spp_exe,  addon_prefs.export_folder]
+            
+        self.report({'INFO'}, f"{info}")
+#        print(info)
+
+        return {'FINISHED'}
+
+class OPEN_PT_preferencessPanel(bpy.types.Panel):
+    bl_idname = 'B2SP Linker.panel'
+    bl_label = 'Preferebces area panel'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'B2SP Linker'
+
+    def draw(self, context):
+            self.layout.operator(OPEN_OT_addon_prefs_example.bl_idname, icon='MESH_CUBE', text="Add Cube")
+    
+    
+
+class FolderPathPreferences(bpy.types.AddonPreferences):
+    bl_idname = __name__
+    
+    spp_exe: bpy.props.StringProperty(
+        name="Spp executable",
+        subtype='FILE_PATH',
+        default="C:/Program Files/Adobe/Adobe Substance 3D Painter/Adobe Substance 3D Painter.exe"
+    )
+    export_folder: bpy.props.StringProperty(
+        name="Spp executable",
+        subtype='DIR_PATH',
+        default="C:/Substancepainter/FBX"
+    )
+    def draw(self, context):
+        layout = self.layout
+        layout.label(text="This is a preferences view for our add-on")
+        layout.prop(self, "spp_exe")
+        layout.prop(self, "export_folder")
+        layout.prop(self, "boolean")
+
+'''
+ export_folder = os.path.normpath("C:/Substancepainter/FBX")
+    
+    substance_painter_path = os.path.normpath(
+        "C:/Program Files/Adobe/Adobe Substance 3D Painter/Adobe Substance 3D Painter.exe")
+'''
+
 
 
 class VIEW3D_PT_QuickExporter_ExportImport(bpy.types.Panel):
@@ -439,7 +464,7 @@ class VIEW3D_PT_QuickExporter_Cleanup(bpy.types.Panel):
 
 
 
-classes = (texture_settings,VIEW3D_PT_QuickExporter_ExportImport,VIEW3D_PT_QuickExporter_ImportSettings, EXPORT_OT_SubstancePainterExporter,VIEW3D_PT_QuickExporter_Cleanup,OPEN_OT_FBXFolder,IMPORT_OT_Textures,REMOVE_OT_UNUSED_TEXTURES)
+classes = (OPEN_OT_addon_prefs_example,FolderPathPreferences,OPEN_PT_preferencessPanel,texture_settings,VIEW3D_PT_QuickExporter_ExportImport,VIEW3D_PT_QuickExporter_ImportSettings, EXPORT_OT_SubstancePainterExporter,VIEW3D_PT_QuickExporter_Cleanup,OPEN_OT_FBXFolder,IMPORT_OT_Textures,REMOVE_OT_UNUSED_TEXTURES)
 
 
 
@@ -449,11 +474,10 @@ def register():
     for c in classes:
         bpy.utils.register_class(c)
     bpy.types.Scene.texture_settings = bpy.props.PointerProperty(type=texture_settings)
-
 def unregister():
     for c in (classes):
         bpy.utils.unregister_class(c)
     del bpy.types.Scene.texture_settings
-
-if __name__ == "__main__":
+    
+if __name__ == "__init__":
     register()
