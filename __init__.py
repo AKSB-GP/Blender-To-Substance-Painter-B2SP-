@@ -1,7 +1,7 @@
 import bpy
 import os
 import subprocess
-
+from pathlib import Path
 bl_info = {
     "name": "B2SP Linker",
     "description": "A addon for improving workflow between Blender and Substance painter. Adds exporting and importing to substance painter via blender",
@@ -15,18 +15,41 @@ bl_info = {
     "support": "COMMUNITY",
     "category": "Import-Export",
 }
-'''
-TODO
-Dynamic paths, "publish" it, make extension of it
-'''
+
 
 #--------------------------------------------------------------------------------
-# PROPERTIES
+# PROPERTIES AND FOLDER PATHS
 #--------------------------------------------------------------------------------
 
+#adjust so that the project usees preferences paths instead of hardcoded
+#Try to find the path automatically?
+#adjust so that a new export folder is created if none exists
+#reorganize the file for readability and fix labels, text etc
+#Fix a proper Markdown
 
 
-class texture_settings(bpy.types.PropertyGroup):
+
+
+class FolderPathPreferences(bpy.types.AddonPreferences):
+    bl_idname = __name__
+    
+    spp_exe: bpy.props.StringProperty(
+        name="Substance Painter executable path",
+        subtype='FILE_PATH',
+        default="C:/Program Files/Adobe/Adobe Substance 3D Painter/Adobe Substance 3D Painter.exe"
+    )
+    export_folder: bpy.props.StringProperty(
+        name="Object export folder path",
+        subtype='DIR_PATH',
+        default="C:/Substancepainter/FBX"
+    )
+    def draw(self, context):
+        layout = self.layout
+        layout.label(text="Paths for Substance painter executable and export path for objects. Change according to your system")
+        layout.prop(self, "spp_exe")
+        layout.prop(self, "export_folder")
+
+class TextureSettings(bpy.types.PropertyGroup):
     '''
     Class that handles which textures to include during the import 
     from Substance Painter
@@ -47,6 +70,7 @@ class texture_settings(bpy.types.PropertyGroup):
     default=False,
     ) 
     
+   
 #--------------------------------------------------------------------------------
 # EXPORT AND IMPORT OPERATORS
 #--------------------------------------------------------------------------------
@@ -75,40 +99,65 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
     
     
     # Base paths
-    export_folder = os.path.normpath("C:/Substancepainter/FBX")
-    
-    substance_painter_path = os.path.normpath(
-        "C:/Program Files/Adobe/Adobe Substance 3D Painter/Adobe Substance 3D Painter.exe")
+    #export_folder = os.path.normpath("C:/Substancepainter/FBX")
 
     def execute(self, context):
+        preferences = context.preferences
+        export_folder = preferences.addons[__name__].preferences.export_folder
+        substance_painter_path = preferences.addons[__name__].preferences.spp_exe
        
         # Ensure export folder exists
-        if not os.path.exists(self.export_folder):
-            os.makedirs(self.export_folder)
+        if not os.path.exists(export_folder):
+            export_folder = Path(bpy.path.abspath('//'))
         
-        # Get selected objects
+                
         objects = context.selected_objects
+        # Get selected  
         if not objects: 
             self.report({"WARNING"}, "No object selected")
             return {'CANCELLED'}
+       
         
+        if self.mutiple_meshes(objects):
+            #just add a obj folder
+            self.report({"INFO"}, f" Multiple objects, creating subfolder named:{str(objects[0].name)}")
+            
+            collection_name= "Objects_"
+            for obj in objects:
+                collection_name+= obj.name[0]
+            object_folder = os.path.join(export_folder,collection_name )
+            export_folder = os.path.join(export_folder, str(object_folder))
+            
+            self.report({"INFO"}, f"object_folder {str(object_folder)}")
+            self.report({"INFO"}, f"export_folder {str(export_folder)}")
+            
+           
+
         # List to store the export paths
         export_paths = []
 
         # Export each object and track success
         try:
             for obj in objects:
-                if self.export_object(obj):
-                    export_paths.append(self.export_object(obj))
+                if self.export_object(export_folder,obj):
+                    export_paths.append(self.export_object(export_folder,obj))
             
             # If there are export paths, open Substance Painter with the objects
             if export_paths:
-                self.open_substance_painter(export_paths)
+                self.open_substance_painter(export_paths,substance_painter_path)
             return {'FINISHED'}
         except Exception as e:
             self.report({"ERROR"}, f"Failed to export objects, the error: {str(e)}")
             return {'CANCELLED'}
     
+    def mutiple_meshes(self,objects):
+        
+        if not objects: 
+            self.report({"WARNING"}, "No object selected")
+            return {'CANCELLED'}
+        if len(objects) >1:
+            return True         
+
     def check_material(self, obj):
         '''
         checks if object has any materials and nodes
@@ -122,19 +171,22 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
         else:
             self.report({"INFO"}, f"{obj.name} already has a material")
 
-    def export_object(self, obj):
+    def export_object(self,export_folder,obj):
         '''
-        Return the fbx filepath and exports the mesh from blender to teh specificed folderpath
+        Return the fbx filepath and exports the mesh from blender to the specificed folderpath
         '''
         if obj.type == 'MESH':
             self.check_material(obj)
-            object_folder = os.path.join(self.export_folder, obj.name)
+            object_folder = os.path.join(export_folder, obj.name)
+            
             os.makedirs(object_folder, exist_ok=True)
 
-            texture_folder_name = f"{obj.name}_textures" 
-            texture_folder = os.path.join(object_folder, texture_folder_name)
-            os.makedirs(texture_folder, exist_ok=True)
             
+            texture_folder_name = f"{obj.name}_textures"
+             
+            texture_folder = os.path.join(object_folder, texture_folder_name)
+            
+            os.makedirs(texture_folder, exist_ok=True)
             export_name = f"{obj.name}.fbx"
             export_path = os.path.normpath(os.path.join(object_folder, export_name))
 
@@ -148,14 +200,15 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
             self.report({"WARNING"}, f"{obj.name} is not a mesh object, skipping mesh check.")
             return None
 
-    def open_substance_painter(self, export_paths):
+    def open_substance_painter(self, export_paths,spp_exe):
         '''
         Combine all mesh filepaths into a single list of arguments through a list comprehension
         results in [SP_exe, --mesh, mesh_path, --mesh, mesh_path, etc] 
         which opens substance painter with the selected meshes 
         '''
+        
         try:
-            args = [self.substance_painter_path] + [mesh for path in export_paths for mesh in ["--mesh", path]]
+            args = [spp_exe] + [mesh for path in export_paths for mesh in ["--mesh", path]]
             subprocess.Popen(args, stdout=subprocess.PIPE, text=True)
             self.report({"INFO"}, f"Trying to open Substance Painter with FBX files: {', '.join(export_paths)}")
         except Exception as e:
@@ -168,15 +221,16 @@ class IMPORT_OT_Textures(bpy.types.Operator):
     '''
     bl_idname ="import.textures"
     bl_label = "import Textures"
-     
 
-    
     def execute(self,context):
         #Get active object and its texture folder
         obj = bpy.context.active_object
-        textures_folder = os.path.join(os.path.normpath("C:/Substancepainter/FBX"),obj.name,f"{obj.name}_textures")        
-       
-
+        preferences = context.preferences
+        export_folder_path = preferences.addons[__name__].preferences.export_folder
+        textures_folder = os.path.join(os.path.normpath(export_folder_path),obj.name,f"{obj.name}_textures")        
+        object_folder = os.path.join(export_folder_path, obj.name)
+        os.makedirs(object_folder, exist_ok=True)
+        
         try:
             #Validate selection
             if not textures_folder.find(obj.name): 
@@ -353,66 +407,6 @@ class OPEN_OT_FBXFolder(bpy.types.Operator):
 # UI PANELs
 #--------------------------------------------------------------------------------
 
-#adjust so that the project usees preferences paths instead of hardcoded
-#adjust so that a new export folder is created if none exists
-#reorganize the file for readability and fix labels, text etc
-
-class OPEN_OT_addon_prefs_example(bpy.types.Operator):
-    bl_idname = "open.addon_prefs_example"
-    bl_label = "Path preferences"
-
-    def execute(self, context):
-        preferences = context.preferences
-        addon_prefs = preferences.addons[__name__].preferences
-
-        info = [addon_prefs.spp_exe,  addon_prefs.export_folder]
-            
-        self.report({'INFO'}, f"{info}")
-#        print(info)
-
-        return {'FINISHED'}
-
-class OPEN_PT_preferencessPanel(bpy.types.Panel):
-    bl_idname = 'B2SP Linker.panel'
-    bl_label = 'Preferebces area panel'
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = 'B2SP Linker'
-
-    def draw(self, context):
-            self.layout.operator(OPEN_OT_addon_prefs_example.bl_idname, icon='MESH_CUBE', text="Add Cube")
-    
-    
-
-class FolderPathPreferences(bpy.types.AddonPreferences):
-    bl_idname = __name__
-    
-    spp_exe: bpy.props.StringProperty(
-        name="Spp executable",
-        subtype='FILE_PATH',
-        default="C:/Program Files/Adobe/Adobe Substance 3D Painter/Adobe Substance 3D Painter.exe"
-    )
-    export_folder: bpy.props.StringProperty(
-        name="Spp executable",
-        subtype='DIR_PATH',
-        default="C:/Substancepainter/FBX"
-    )
-    def draw(self, context):
-        layout = self.layout
-        layout.label(text="This is a preferences view for our add-on")
-        layout.prop(self, "spp_exe")
-        layout.prop(self, "export_folder")
-        layout.prop(self, "boolean")
-
-'''
- export_folder = os.path.normpath("C:/Substancepainter/FBX")
-    
-    substance_painter_path = os.path.normpath(
-        "C:/Program Files/Adobe/Adobe Substance 3D Painter/Adobe Substance 3D Painter.exe")
-'''
-
-
-
 class VIEW3D_PT_QuickExporter_ExportImport(bpy.types.Panel):
     """Export/Import Panel for the addon"""
     bl_space_type = "VIEW_3D"
@@ -464,7 +458,7 @@ class VIEW3D_PT_QuickExporter_Cleanup(bpy.types.Panel):
 
 
 
-classes = (OPEN_OT_addon_prefs_example,FolderPathPreferences,OPEN_PT_preferencessPanel,texture_settings,VIEW3D_PT_QuickExporter_ExportImport,VIEW3D_PT_QuickExporter_ImportSettings, EXPORT_OT_SubstancePainterExporter,VIEW3D_PT_QuickExporter_Cleanup,OPEN_OT_FBXFolder,IMPORT_OT_Textures,REMOVE_OT_UNUSED_TEXTURES)
+classes = (FolderPathPreferences,TextureSettings,VIEW3D_PT_QuickExporter_ExportImport,VIEW3D_PT_QuickExporter_ImportSettings, EXPORT_OT_SubstancePainterExporter,VIEW3D_PT_QuickExporter_Cleanup,OPEN_OT_FBXFolder,IMPORT_OT_Textures,REMOVE_OT_UNUSED_TEXTURES)
 
 
 
@@ -473,7 +467,7 @@ classes = (OPEN_OT_addon_prefs_example,FolderPathPreferences,OPEN_PT_preferences
 def register():
     for c in classes:
         bpy.utils.register_class(c)
-    bpy.types.Scene.texture_settings = bpy.props.PointerProperty(type=texture_settings)
+    bpy.types.Scene.texture_settings = bpy.props.PointerProperty(type=TextureSettings)
 def unregister():
     for c in (classes):
         bpy.utils.unregister_class(c)
