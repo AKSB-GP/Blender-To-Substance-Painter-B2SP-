@@ -408,11 +408,10 @@ def register():
         bpy.utils.register_class(c)
     bpy.types.Scene.texture_settings = bpy.props.PointerProperty(type=TextureSettings)
 def unregister():
-    for c in (classes):
-        bpy.utils.unregister_class(c)
     del bpy.types.Scene.texture_settings
+    for c in reversed(classes):
+        bpy.utils.unregister_class(c)
     
-if __name__ == "__main__":
+if __package__ == "__main__":
     register()
-    
     
