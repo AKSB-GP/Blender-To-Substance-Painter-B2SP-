@@ -32,7 +32,7 @@ class FolderPathPreferences(bpy.types.AddonPreferences):
     export_folder: bpy.props.StringProperty(
         name="Object export folder path",
         subtype='DIR_PATH',
-        default="C:/Substancepainter/FBX"
+        default=""
     )
     def draw(self, context):
         layout = self.layout
