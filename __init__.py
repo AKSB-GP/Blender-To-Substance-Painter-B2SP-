@@ -331,12 +331,14 @@ class OPEN_OT_FBXFolder(bpy.types.Operator):
     bl_label = "Open FBX Folder"
 
     def execute(self, context):
-        export_folder = os.path.normpath("C:/Substancepainter/FBX")
+        
+        preferences = context.preferences
+        export_folder = preferences.addons[__name__].preferences.export_folder
         try:
             os.startfile(export_folder)  
             self.report({'INFO'}, f"Opened folder: {export_folder}")
         except Exception as e:
-            self.report({'ERROR'}, f"Failed to open folder: {str(e)}")
+            self.report({'ERROR'}, f"Failed to open folder, the error: {str(e)}")
         return {'FINISHED'}
 
 
