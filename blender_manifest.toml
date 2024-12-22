@@ -1,0 +1,11 @@
+name= "BlenderToSubstance"
+tagline="A addon for improving workflow between Blender and Substance painter. Adds exporting and importing to substance painter via blender"
+type= "add-on"
+id= "B2SP_Linker"
+maintainer= "Alexander Kazakov"
+schema_version= "1.0.0"
+blender_version_min= "4.2.0"
+license = [
+    "AGPL-3.0-only",
+]
+version= "1.0.0"
