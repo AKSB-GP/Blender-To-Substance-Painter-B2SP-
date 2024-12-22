@@ -3,26 +3,12 @@ import os
 import subprocess
 from pathlib import Path
 
-bl_info = {
-    "name": "B2SP Linker",
-    "description": "A addon for improving workflow between Blender and Substance painter. Adds exporting and importing to substance painter via blender",
-    "author": "Alexander Kazakov",
-    "version": (1, 0),
-    "blender": (4, 2, 3),
-    "location": "View3D > UI > Tools",
-    "warning": "",  
-    "doc_url": "https://github.com/AKSB-GP/BlendertoSubstanceexporter",
-    "tracker_url": "TBA",
-    "support": "COMMUNITY",
-    "category": "Import-Export",
-}
-
 #--------------------------------------------------------------------------------
 # PROPERTIES AND FOLDER PATHS
 #--------------------------------------------------------------------------------
 class FolderPathPreferences(bpy.types.AddonPreferences):
     '''Paths for substance painter executable and export_folder'''
-    bl_idname = __name__
+    bl_idname = __package__
     
     spp_exe: bpy.props.StringProperty(
         name="Substance Painter executable path",
@@ -78,8 +64,8 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
     
     def execute(self, context):
         preferences = context.preferences
-        export_folder = preferences.addons[__name__].preferences.export_folder
-        substance_painter_path = preferences.addons[__name__].preferences.spp_exe
+        export_folder = preferences.addons[__package__].preferences.export_folder
+        substance_painter_path = preferences.addons[__package__].preferences.spp_exe
         objects = context.selected_objects
         #Check if export folder path exists, if not export textures in the same folder as blend file
         if not os.path.exists(export_folder):
@@ -158,7 +144,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
      
     def execute(self, context):
         preferences = context.preferences
-        export_folder_path = preferences.addons[__name__].preferences.export_folder
+        export_folder_path = preferences.addons[__package__].preferences.export_folder
         objects = context.selected_objects
         # For object in the scene: 
         for obj in objects:
@@ -333,7 +319,7 @@ class OPEN_OT_FBXFolder(bpy.types.Operator):
     def execute(self, context):
         
         preferences = context.preferences
-        export_folder = preferences.addons[__name__].preferences.export_folder
+        export_folder = preferences.addons[__package__].preferences.export_folder
         try:
             os.startfile(export_folder)  
             self.report({'INFO'}, f"Opened folder: {export_folder}")
@@ -408,11 +394,11 @@ def register():
         bpy.utils.register_class(c)
     bpy.types.Scene.texture_settings = bpy.props.PointerProperty(type=TextureSettings)
 def unregister():
-    for c in (classes):
-        bpy.utils.unregister_class(c)
     del bpy.types.Scene.texture_settings
+    for c in reversed(classes):
+        bpy.utils.unregister_class(c)
     
-if __name__ == "__main__":
+if __package__ == "__main__":
     register()
     
     
