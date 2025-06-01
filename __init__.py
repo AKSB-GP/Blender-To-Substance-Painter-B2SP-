@@ -91,7 +91,7 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
         try:
             folder_path.mkdir(parents=True, exist_ok=True)
             export_paths = []
-            #os.path.join(a, b) same as 	Path(a) / b
+            # os.path.join(a, b) same as 	Path(a) / b
             for obj in objects:
                 obj_folder = folder_path / obj.name
                 obj_folder.mkdir(parents=True, exist_ok=True)
@@ -125,7 +125,7 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
         if obj.type == "MESH":
             # check material on object
             self.check_material(obj)
-            #object_folder = os.path.join(export_folder, obj.name)
+            # object_folder = os.path.join(export_folder, obj.name)
             os.makedirs(export_folder, exist_ok=True)
             # Export object
             export_name = f"{obj.name}.fbx"
@@ -152,7 +152,9 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
         which opens substance painter with the selected meshes
         """
         try:
-            args = [spp_exe] + [mesh for path in export_paths for mesh in ["--mesh", path]]
+            args = [spp_exe] + [
+                mesh for path in export_paths for mesh in ["--mesh", path]
+            ]
             subprocess.Popen(args, stdout=subprocess.PIPE, text=True)
             self.report(
                 {"INFO"},
@@ -168,19 +170,16 @@ class IMPORT_OT_Textures(bpy.types.Operator):
     bl_idname = "import.textures"
     bl_label = "import Textures"
 
-
-
     def execute(self, context):
         preferences = context.preferences
         export_folder_path = preferences.addons[__package__].preferences.export_folder
         objects = context.selected_objects
-        #c:\Users\Alexander Kazakov\Documents\Adobe\Adobe Substance 3D Painter\export\Blender
-        #export c:\Users\Alexander Kazakov\Documents\Adobe\Adobe Substance 3D Painter\export\Blender\Sphere där sphere är samling av alla items
+        # c:\Users\Alexander Kazakov\Documents\Adobe\Adobe Substance 3D Painter\export\Blender
+        # export c:\Users\Alexander Kazakov\Documents\Adobe\Adobe Substance 3D Painter\export\Blender\Sphere där sphere är samling av alla items
         # For object in the scene:
-        
-        parent_folder = self.folder_iteration(export_folder_path,objects)
-        
-        
+
+        parent_folder = self.folder_iteration(export_folder_path, objects)
+
         for obj in objects:
             if not objects:
                 self.report({"INFO"}, "No object selected")
@@ -188,8 +187,8 @@ class IMPORT_OT_Textures(bpy.types.Operator):
             if obj.type != "MESH":
                 continue
             # Construct the path for a objects textures
-            
-            #textures_folder = os.path.join(os.path.normpath(export_folder_path),obj.name,obj.name, f"{obj.name}_textures")
+
+            # textures_folder = os.path.join(os.path.normpath(export_folder_path),obj.name,obj.name, f"{obj.name}_textures")
             object_folder = os.path.join(parent_folder, obj.name)
             os.makedirs(object_folder, exist_ok=True)
             # Check if the texture folder exists
@@ -217,14 +216,14 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                 continue
         return {"FINISHED"}
 
-    def folder_iteration(self,base_path,objects):
-        #creat path object: 
+    def folder_iteration(self, base_path, objects):
+        # creat path object:
         path = Path(base_path)
-        #Find the parent folder containing all of the objects:
+        # Find the parent folder containing all of the objects:
         for f in path.iterdir():
-            for obj in objects: 
-                if obj.name ==f.name:
-                    return os.path.join(base_path,obj.name)
+            for obj in objects:
+                if obj.name == f.name:
+                    return os.path.join(base_path, obj.name)
                 pass
 
     def assign_textures(self, material, textures_folder, texture_settings):
@@ -277,10 +276,12 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                     links.new(
                         image_node.outputs["Color"], principled_node.inputs["Roughness"]
                     )
+                    image_node.image.colorspace_settings.name = "Non-Color"
                 elif texture_type == "Metallic":
                     links.new(
                         image_node.outputs["Color"], principled_node.inputs["Metallic"]
                     )
+                    image_node.image.colorspace_settings.name = "Non-Color"
                 # Add normal, height and/or bump map if user has enabled them
                 elif texture_type == "Normal" and texture_settings.use_normal_map:
                     normal_node = nodes.new(type="ShaderNodeNormalMap")
@@ -292,6 +293,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                     links.new(
                         normal_node.outputs["Normal"], principled_node.inputs["Normal"]
                     )
+                    image_node.image.colorspace_settings.name = "Non-Color"
                 elif texture_type == "Height" and texture_settings.use_height_map:
                     Height_node = nodes.new(type="ShaderNodeDisplacement")
                     Height_node.location = (
@@ -303,6 +305,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                         Height_node.outputs["Displacement"],
                         principled_node.inputs["Normal"],
                     )
+                    image_node.image.colorspace_settings.name = "Non-Color"
                 elif texture_type == "Bump" and texture_settings.use_bump_map:
                     bump_node = nodes.new(type="ShaderNodeBump")
                     bump_node.location = (
@@ -313,6 +316,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                     links.new(
                         bump_node.outputs["Normal"], principled_node.inputs["Normal"]
                     )
+                    image_node.image.colorspace_settings.name = "Non-Color"
         self.report(
             {"INFO"},
             f"{str(len(textures_assigned))} textures were imported {str(textures_assigned)}",
