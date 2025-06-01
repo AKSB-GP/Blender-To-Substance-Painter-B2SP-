@@ -85,21 +85,27 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
         # List to store all the export paths
         export_paths = []
         # Append the paths to the export list
+        folder_name = bpy.context.active_object.name
+        folder_path = Path(export_folder) / folder_name
+
         try:
-            folder_name = bpy.context.active_object.name
-            #if not os.path.exists(export_folder):
-            folder_path = os.path.join(export_folder, folder_name)
-            os.makedirs(folder_path, exist_ok=True)  
-            selection_folder = folder_path             
+            folder_path.mkdir(parents=True, exist_ok=True)
+            export_paths = []
+            #os.path.join(a, b) same as 	Path(a) / b
             for obj in objects:
-                if self.export_object(selection_folder, obj):
-                    export_paths.append(self.export_object(selection_folder, obj))
-                # open the list in Substance Painter if any paths exist
-                if export_paths:
-                    self.open_substance_painter(export_paths, substance_painter_path)
-                return {"FINISHED"}
+                obj_folder = folder_path / obj.name
+                obj_folder.mkdir(parents=True, exist_ok=True)
+                export_result = self.export_object(str(obj_folder), obj)
+                if export_result:
+                    export_paths.append(export_result)
+
+            if export_paths:
+                self.open_substance_painter(export_paths, substance_painter_path)
+
+            return {"FINISHED"}
+
         except Exception as e:
-            self.report({"ERROR"}, f"Failed to export objects, the error: {str(e)}")
+            self.report({"ERROR"}, f"Failed to export objects: {str(e)}")
             return {"CANCELLED"}
 
     def check_material(self, obj):
@@ -119,15 +125,11 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
         if obj.type == "MESH":
             # check material on object
             self.check_material(obj)
-            object_folder = os.path.join(export_folder, obj.name)
-            # Make folders for object and its texture
-            os.makedirs(object_folder, exist_ok=True)
-            texture_folder_name = f"{obj.name}_textures"
-            texture_folder = os.path.join(object_folder, texture_folder_name)
-            os.makedirs(texture_folder, exist_ok=True)
+            #object_folder = os.path.join(export_folder, obj.name)
+            os.makedirs(export_folder, exist_ok=True)
             # Export object
             export_name = f"{obj.name}.fbx"
-            export_path = os.path.normpath(os.path.join(object_folder, export_name))
+            export_path = os.path.normpath(os.path.join(export_folder, export_name))
             bpy.ops.export_scene.fbx(
                 filepath=export_path,
                 global_scale=1.0,
@@ -166,11 +168,19 @@ class IMPORT_OT_Textures(bpy.types.Operator):
     bl_idname = "import.textures"
     bl_label = "import Textures"
 
+
+
     def execute(self, context):
         preferences = context.preferences
         export_folder_path = preferences.addons[__package__].preferences.export_folder
         objects = context.selected_objects
+        #c:\Users\Alexander Kazakov\Documents\Adobe\Adobe Substance 3D Painter\export\Blender
+        #export c:\Users\Alexander Kazakov\Documents\Adobe\Adobe Substance 3D Painter\export\Blender\Sphere där sphere är samling av alla items
         # For object in the scene:
+        
+        parent_folder = self.folder_iteration(export_folder_path,objects)
+        
+        
         for obj in objects:
             if not objects:
                 self.report({"INFO"}, "No object selected")
@@ -178,13 +188,12 @@ class IMPORT_OT_Textures(bpy.types.Operator):
             if obj.type != "MESH":
                 continue
             # Construct the path for a objects textures
-            textures_folder = os.path.join(
-                os.path.normpath(export_folder_path), obj.name, f"{obj.name}_textures"
-            )
-            object_folder = os.path.join(export_folder_path, obj.name)
+            
+            #textures_folder = os.path.join(os.path.normpath(export_folder_path),obj.name,obj.name, f"{obj.name}_textures")
+            object_folder = os.path.join(parent_folder, obj.name)
             os.makedirs(object_folder, exist_ok=True)
             # Check if the texture folder exists
-            if not os.path.exists(textures_folder):
+            if not os.path.exists(object_folder):
                 self.report({"INFO"}, f"Texture folder does not exist for {obj.name}")
                 continue
             try:
@@ -198,7 +207,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                         mat.use_nodes = True
                     # Assign textures to the material
                     self.assign_textures(
-                        mat, textures_folder, context.scene.texture_settings
+                        mat, object_folder, context.scene.texture_settings
                     )
                     # if an error occurs, move to next  object
             except Exception as e:
@@ -207,6 +216,16 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                 )
                 continue
         return {"FINISHED"}
+
+    def folder_iteration(self,base_path,objects):
+        #creat path object: 
+        path = Path(base_path)
+        #Find the parent folder containing all of the objects:
+        for f in path.iterdir():
+            for obj in objects: 
+                if obj.name ==f.name:
+                    return os.path.join(base_path,obj.name)
+                pass
 
     def assign_textures(self, material, textures_folder, texture_settings):
         """
