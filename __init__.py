@@ -248,74 +248,50 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                 filepath = os.path.join(textures_folder, filename)
                 textures_assigned.append(filename)
                 # Create an image node and apply texture
-                image_node = nodes.new(type="ShaderNodeTexImage")
-                image_node.location = (-800, node_y_position)
-                image_node.image = bpy.data.images.load(filepath)
+                #image_node = nodes.new(type="ShaderNodeTexImage")
+                #image_node.location = (-800, node_y_position)
+                #image_node.image = bpy.data.images.load(filepath)
                 # align better to bsdf
-                node_y_position -= 400
                 # connect to BSDF
                 if texture_type == "Base Color":
+                    image_node = self.create_image_node(nodes,node_y_position,filepath)
                     links.new(
                         image_node.outputs["Color"],
                         principled_node.inputs["Base Color"],
                     )
                 elif texture_type == "Roughness":
+                    image_node = self.create_image_node(nodes,node_y_position,filepath)
                     links.new(
                         image_node.outputs["Color"], principled_node.inputs["Roughness"]
                     )
                     image_node.image.colorspace_settings.name = "Non-Color"
+                elif texture_type =="Displacement" and texture_settings.use_bump_map:
+                    image_node = self.create_image_node(nodes,node_y_position,filepath)
+                    image_node.image.colorspace_settings.name = "Non-Color"
+                    bump_node = nodes.new(type="ShaderNodeBump")
+                    bump_node.location = (image_node.location.x +200,node_y_position)
+                    links.new(image_node.outputs["Color"],bump_node.inputs["Normal"])
+                    links.new(bump_node.outputs["Normal"],principled_node.inputs["Normal"])   
+
+                elif texture_type =="Normal" and texture_settings.use_normal_map:
+                    image_node = self.create_image_node(nodes,node_y_position,filepath)
+                    image_node.image.colorspace_settings.name = "Non-Color"
+                    normal_map_node = nodes.new(type="ShaderNodeNormalMap")
+                    normal_map_node.location = (image_node.location.x +200,node_y_position)
+                    links.new(image_node.outputs["Color"],normal_map_node.inputs["Color"])
+                    links.new(normal_map_node.outputs["Normal"],principled_node.inputs["Normal"])   
+                
+                 
+                        
+                                        
                 elif texture_type == "Metallic":
+                    image_node = self.create_image_node(nodes,node_y_position,filepath)
                     links.new(
                         image_node.outputs["Color"], principled_node.inputs["Metallic"]
                     )
                     image_node.image.colorspace_settings.name = "Non-Color"
+                node_y_position -= 400
               
-                # Add normal and/or bump map if user has enabled them
-                elif texture_type == "Normal" and texture_settings.use_normal_map:
-                    normal_node = nodes.new(type="ShaderNodeNormalMap")
-                    normal_node.location = (
-                        image_node.location.x + node_x_displacement,
-                        image_node.location.y,
-                    )
-                    image_node.image.colorspace_settings.name = "Non-Color"
-                    if texture_settings.use_bump_map:
-                        nodes.remove(normal_node)
-                        bump_node = nodes.new(type="ShaderNodeBump")
-                        bump_node.location = (
-                            image_node.location.x + node_x_displacement,
-                            image_node.location.y,
-                        )
-                        links.new(
-                            image_node.outputs["Color"], bump_node.inputs["Normal"]
-                        )
-                        links.new(
-                            bump_node.outputs["Normal"],
-                            principled_node.inputs["Normal"],
-                        )
-
-                    else:
-                        links.new(
-                            image_node.outputs["Color"], normal_node.inputs["Color"]
-                        )
-                        links.new(
-                            normal_node.outputs["Normal"],
-                            principled_node.inputs["Normal"],
-                        )
-                elif texture_type == "Displacement" and texture_settings.use_bump_map:
-                    bump_node = nodes.new(type="ShaderNodeBump")
-                    bump_node.location = (
-                        image_node.location.x + node_x_displacement,
-                        image_node.location.y,
-                    )
-                    
-                    image_node.image.colorspace_settings.name = "Non-Color"
-                    if texture_settings.use_normal_map:
-                        links.new(image_node.outputs["Color"],bump_node.inputs["Height"])
-                        links.new(bump_node.outputs["Normal"], principled_node.inputs["Normal"])
-                    else:
-                        links.new(image_node.outputs["Color"], bump_node.inputs["Normal"])
-                        links.new(bump_node.outputs["Normal"], principled_node.inputs["Normal"])
-
         self.report({"INFO"},f"{str(len(textures_assigned))} textures were imported {str(textures_assigned)}",)
 
     def get_texture_type(self, filename):
@@ -332,8 +308,13 @@ class IMPORT_OT_Textures(bpy.types.Operator):
             return "Metallic"
         else:
             return None
-
-
+    
+        
+    def create_image_node(self,nodes,node_y_position,filepath):
+        image_node = nodes.new(type="ShaderNodeTexImage")
+        image_node.location = (-800, node_y_position)
+        image_node.image = bpy.data.images.load(filepath)
+        return image_node
 # --------------------------------------------------------------------------------
 # UTILITY OPERATORS
 # --------------------------------------------------------------------------------
