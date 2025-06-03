@@ -169,9 +169,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
         preferences = context.preferences
         export_folder_path = preferences.addons[__package__].preferences.export_folder
         objects = context.selected_objects
-        # c:\Users\Alexander Kazakov\Documents\Adobe\Adobe Substance 3D Painter\export\Blender
-        # export c:\Users\Alexander Kazakov\Documents\Adobe\Adobe Substance 3D Painter\export\Blender\Sphere där sphere är samling av alla items
-        # For object in the scene:
+
 
         parent_folder = self.folder_iteration(export_folder_path, objects)
 
@@ -181,9 +179,6 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                 return {"CANCELLED"}
             if obj.type != "MESH":
                 continue
-            # Construct the path for a objects textures
-
-            # textures_folder = os.path.join(os.path.normpath(export_folder_path),obj.name,obj.name, f"{obj.name}_textures")
             object_folder = os.path.join(parent_folder, obj.name)
             os.makedirs(object_folder, exist_ok=True)
             # Check if the texture folder exists
@@ -205,9 +200,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                     )
                     # if an error occurs, move to next  object
             except Exception as e:
-                self.report(
-                    {"INFO"}, f"Error assigning textures to {obj.name}: {str(e)}"
-                )
+                self.report({"INFO"}, f"Error assigning textures to {obj.name}: {str(e)}",)
                 continue
         return {"FINISHED"}
 
@@ -248,7 +241,6 @@ class IMPORT_OT_Textures(bpy.types.Operator):
         links.new(principled_node.outputs["BSDF"], output_node.inputs["Surface"])
         # assign textures to material:
         for filename in os.listdir(textures_folder):
-            # check filetypes and join them, also check name
             if filename.lower().endswith(file_types):
                 if material.name not in filename:
                     continue
@@ -277,26 +269,37 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                         image_node.outputs["Color"], principled_node.inputs["Metallic"]
                     )
                     image_node.image.colorspace_settings.name = "Non-Color"
-
-                # Add normal, height and/or bump map if user has enabled them
+              
+                # Add normal and/or bump map if user has enabled them
                 elif texture_type == "Normal" and texture_settings.use_normal_map:
                     normal_node = nodes.new(type="ShaderNodeNormalMap")
                     normal_node.location = (
                         image_node.location.x + node_x_displacement,
-                        image_node.location.y
+                        image_node.location.y,
                     )
                     image_node.image.colorspace_settings.name = "Non-Color"
                     if texture_settings.use_bump_map:
                         nodes.remove(normal_node)
                         bump_node = nodes.new(type="ShaderNodeBump")
-                        bump_node.location = (image_node.location.x+node_x_displacement,image_node.location.y )
-                        links.new(image_node.outputs["Color"],bump_node.inputs["Normal"])
-                        links.new(bump_node.outputs["Normal"], principled_node.inputs["Normal"])
+                        bump_node.location = (
+                            image_node.location.x + node_x_displacement,
+                            image_node.location.y,
+                        )
+                        links.new(
+                            image_node.outputs["Color"], bump_node.inputs["Normal"]
+                        )
+                        links.new(
+                            bump_node.outputs["Normal"],
+                            principled_node.inputs["Normal"],
+                        )
 
                     else:
-                        links.new(image_node.outputs["Color"], normal_node.inputs["Color"])
                         links.new(
-                            normal_node.outputs["Normal"], principled_node.inputs["Normal"]
+                            image_node.outputs["Color"], normal_node.inputs["Color"]
+                        )
+                        links.new(
+                            normal_node.outputs["Normal"],
+                            principled_node.inputs["Normal"],
                         )
                 elif texture_type == "Displacement" and texture_settings.use_bump_map:
                     bump_node = nodes.new(type="ShaderNodeBump")
@@ -304,15 +307,16 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                         image_node.location.x + node_x_displacement,
                         image_node.location.y,
                     )
+                    
                     image_node.image.colorspace_settings.name = "Non-Color"
-                    links.new(image_node.outputs["Color"], bump_node.inputs["Normal"])
-                    links.new(
-                            bump_node.outputs["Normal"], principled_node.inputs["Normal"]
-                        )
-        self.report(
-            {"INFO"},
-            f"{str(len(textures_assigned))} textures were imported {str(textures_assigned)}",
-        )
+                    if texture_settings.use_normal_map:
+                        links.new(image_node.outputs["Color"],bump_node.inputs["Height"])
+                        links.new(bump_node.outputs["Normal"], principled_node.inputs["Normal"])
+                    else:
+                        links.new(image_node.outputs["Color"], bump_node.inputs["Normal"])
+                        links.new(bump_node.outputs["Normal"], principled_node.inputs["Normal"])
+
+        self.report({"INFO"},f"{str(len(textures_assigned))} textures were imported {str(textures_assigned)}",)
 
     def get_texture_type(self, filename):
         """Returns the texture type name"""
