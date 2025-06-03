@@ -41,11 +41,6 @@ class TextureSettings(bpy.types.PropertyGroup):
         description="Enable to use Normal Map",
         default=True,
     )
-    use_height_map: bpy.props.BoolProperty(
-        name="use_height_map",
-        description="Enable to use Height Map",
-        default=False,
-    )
     use_bump_map: bpy.props.BoolProperty(
         name="use_bump_map",
         description="Enable to use Bump Map",
@@ -282,41 +277,38 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                         image_node.outputs["Color"], principled_node.inputs["Metallic"]
                     )
                     image_node.image.colorspace_settings.name = "Non-Color"
+
                 # Add normal, height and/or bump map if user has enabled them
                 elif texture_type == "Normal" and texture_settings.use_normal_map:
                     normal_node = nodes.new(type="ShaderNodeNormalMap")
                     normal_node.location = (
                         image_node.location.x + node_x_displacement,
-                        image_node.location.y,
-                    )
-                    links.new(image_node.outputs["Color"], normal_node.inputs["Color"])
-                    links.new(
-                        normal_node.outputs["Normal"], principled_node.inputs["Normal"]
+                        image_node.location.y
                     )
                     image_node.image.colorspace_settings.name = "Non-Color"
-                elif texture_type == "Height" and texture_settings.use_height_map:
-                    Height_node = nodes.new(type="ShaderNodeDisplacement")
-                    Height_node.location = (
-                        image_node.location.x + node_x_displacement,
-                        image_node.location.y,
-                    )
-                    links.new(image_node.outputs["Color"], Height_node.inputs["Normal"])
-                    links.new(
-                        Height_node.outputs["Displacement"],
-                        principled_node.inputs["Normal"],
-                    )
-                    image_node.image.colorspace_settings.name = "Non-Color"
-                elif texture_type == "Bump" and texture_settings.use_bump_map:
+                    if texture_settings.use_bump_map:
+                        nodes.remove(normal_node)
+                        bump_node = nodes.new(type="ShaderNodeBump")
+                        bump_node.location = (image_node.location.x+node_x_displacement,image_node.location.y )
+                        links.new(image_node.outputs["Color"],bump_node.inputs["Normal"])
+                        links.new(bump_node.outputs["Normal"], principled_node.inputs["Normal"])
+
+                    else:
+                        links.new(image_node.outputs["Color"], normal_node.inputs["Color"])
+                        links.new(
+                            normal_node.outputs["Normal"], principled_node.inputs["Normal"]
+                        )
+                elif texture_type == "Displacement" and texture_settings.use_bump_map:
                     bump_node = nodes.new(type="ShaderNodeBump")
                     bump_node.location = (
                         image_node.location.x + node_x_displacement,
                         image_node.location.y,
                     )
+                    image_node.image.colorspace_settings.name = "Non-Color"
                     links.new(image_node.outputs["Color"], bump_node.inputs["Normal"])
                     links.new(
-                        bump_node.outputs["Normal"], principled_node.inputs["Normal"]
-                    )
-                    image_node.image.colorspace_settings.name = "Non-Color"
+                            bump_node.outputs["Normal"], principled_node.inputs["Normal"]
+                        )
         self.report(
             {"INFO"},
             f"{str(len(textures_assigned))} textures were imported {str(textures_assigned)}",
@@ -324,14 +316,14 @@ class IMPORT_OT_Textures(bpy.types.Operator):
 
     def get_texture_type(self, filename):
         """Returns the texture type name"""
-        if "diffuse" in filename.lower() or "base_color" in filename.lower():
+        if "diffuse" in filename.lower() or "basecolor" in filename.lower():
             return "Base Color"
         elif "roughness" in filename.lower():
             return "Roughness"
         elif "normal" in filename.lower():
             return "Normal"
-        elif "height" in filename.lower():
-            return "Height"
+        elif "displacement" in filename.lower():
+            return "Displacement"
         elif "metallic" in filename.lower():
             return "Metallic"
         else:
@@ -458,7 +450,6 @@ class VIEW3D_PT_QuickExporter_ImportSettings(bpy.types.Panel):
         texture_settings = context.scene.texture_settings
         col = layout.column()
         col.prop(texture_settings, "use_normal_map", text="Normal Map")
-        col.prop(texture_settings, "use_height_map", text="Height Map")
         col.prop(texture_settings, "use_bump_map", text="Bump Map")
 
 
