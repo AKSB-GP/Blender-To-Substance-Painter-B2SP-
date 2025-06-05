@@ -51,6 +51,11 @@ class TextureSettings(bpy.types.PropertyGroup):
         description="Enable to remove all unused image nodes, otherwise only remove on seleced material",
         default=False,
     )
+    clean_work_space: bpy.props.BoolProperty(
+        name="Clean workspace",
+        description="Enable to remove all nodes in the material before importing textures",
+        default=True,
+    )
 
 
 # --------------------------------------------------------------------------------
@@ -160,10 +165,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
         preferences = context.preferences
         export_folder_path = preferences.addons[__package__].preferences.export_folder
         objects = context.selected_objects
-
-
         parent_folder = self.folder_iteration(export_folder_path, objects)
-
         for obj in objects:
             if not objects:
                 self.report({"INFO"}, "No object selected")
@@ -222,14 +224,27 @@ class IMPORT_OT_Textures(bpy.types.Operator):
         node_y_position = 400
         # Used to show what textures where assigned
         textures_assigned = []
-        # Remove previous nodes to clear the workspace
+        # Remove previous nodes to clear the workspace if the user wants it
+        if texture_settings.clean_work_space:
+            for node in nodes:
+                nodes.remove(node)
+                
+        # check if output and bsdf_principled nodes exist
+        output_node = None
+        principled_node = None
         for node in nodes:
-            nodes.remove(node)
+            if node.type == 'OUTPUT_MATERIAL':
+                output_node = node
+            elif node.type == 'BSDF_PRINCIPLED':
+                principled_node = node
         # create BSDF and output node
-        output_node = nodes.new(type="ShaderNodeOutputMaterial")
-        output_node.location = (400, 0)
-        principled_node = nodes.new(type="ShaderNodeBsdfPrincipled")
-        principled_node.location = (0, 0)
+        if not output_node:
+            output_node = nodes.new(type="ShaderNodeOutputMaterial")
+            output_node.location = (400, 0)
+        if not principled_node:
+            principled_node = nodes.new(type="ShaderNodeBsdfPrincipled")
+            principled_node.location = (0, 0)
+       
         # Link the Principled BSDF to the Material Output
         links.new(principled_node.outputs["BSDF"], output_node.inputs["Surface"])
         # Normal and displacement rereferences
@@ -242,22 +257,25 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                     continue
                 texture_type = self.get_texture_type(filename)
                 filepath = os.path.join(textures_folder, filename)
-                textures_assigned.append(filename)
                 if texture_type == "Base Color":
                     image_node = self.create_image_node(nodes,node_y_position,filepath)
-                    links.new(
-                        image_node.outputs["Color"],
-                        principled_node.inputs["Base Color"],
-                    )
+                    if texture_settings.clean_work_space:
+                        links.new(
+                            image_node.outputs["Color"],
+                            principled_node.inputs["Base Color"],
+                        )
                     node_y_position -= 400
+                    textures_assigned.append(filename)
 
                 elif texture_type == "Roughness":
                     image_node = self.create_image_node(nodes,node_y_position,filepath)
-                    links.new(
-                        image_node.outputs["Color"], principled_node.inputs["Roughness"]
-                    )
+                    if texture_settings.clean_work_space:
+                        links.new(
+                            image_node.outputs["Color"], principled_node.inputs["Roughness"]
+                        )
                     image_node.image.colorspace_settings.name = "Non-Color"
                     node_y_position -= 400
+                    textures_assigned.append(filename)
                 elif texture_type =="Displacement" and texture_settings.use_bump_map:
                     image_node = self.create_image_node(nodes,node_y_position,filepath)
                     image_node.image.colorspace_settings.name = "Non-Color"
@@ -266,10 +284,12 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                     else:
                         bump_node = nodes.new(type="ShaderNodeBump")
                         bump_node.location = (image_node.location.x +node_x_displacement,node_y_position)
+                        
                         links.new(image_node.outputs["Color"],bump_node.inputs["Height"])
-                        links.new(bump_node.outputs["Normal"],principled_node.inputs["Normal"])   
+                        if texture_settings.clean_work_space:
+                            links.new(bump_node.outputs["Normal"],principled_node.inputs["Normal"])   
                     node_y_position -= 400
-
+                    textures_assigned.append(filename)
                 elif texture_type =="Normal" and texture_settings.use_normal_map:
                     image_node = self.create_image_node(nodes,node_y_position,filepath)
                     image_node.image.colorspace_settings.name = "Non-Color"
@@ -279,24 +299,26 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                         normal_map_node = nodes.new(type="ShaderNodeNormalMap")
                         normal_map_node.location = (image_node.location.x +node_x_displacement,node_y_position)
                         links.new(image_node.outputs["Color"],normal_map_node.inputs["Color"])
-                        links.new(normal_map_node.outputs["Normal"],principled_node.inputs["Normal"])   
+                        if texture_settings.clean_work_space:
+                            links.new(normal_map_node.outputs["Normal"],principled_node.inputs["Normal"])   
                     node_y_position -= 400
-
+                    textures_assigned.append(filename)
                 elif texture_type == "Metallic":
                     image_node = self.create_image_node(nodes,node_y_position,filepath)
-                    links.new(
-                        image_node.outputs["Color"], principled_node.inputs["Metallic"]
-                    )
                     image_node.image.colorspace_settings.name = "Non-Color"
+                    if texture_settings.clean_work_space:
+                        links.new(
+                            image_node.outputs["Color"], principled_node.inputs["Metallic"]
+                        )
                     node_y_position -= 400
-                    
+                    textures_assigned.append(filename)                   
         if texture_settings.use_bump_map and texture_settings.use_normal_map:
             bump_normal_node = nodes.new(type="ShaderNodeBump")
-            #bump_normal_node.location = (displace_node_ref.location.x + node_x_displacement, displace_node_ref.location.y)
             bump_normal_node.location = ( displace_node_ref.location.x + node_x_displacement,(displace_node_ref.location.y-normal_node_ref.location.y)/2.0)
             links.new(displace_node_ref.outputs["Color"], bump_normal_node.inputs["Normal"])
             links.new(normal_node_ref.outputs["Color"], bump_normal_node.inputs["Height"])
-            links.new(bump_normal_node.outputs["Normal"], principled_node.inputs["Normal"])
+            if texture_settings.clean_work_space:
+                links.new(bump_normal_node.outputs["Normal"], principled_node.inputs["Normal"])
         self.report({"INFO"},f"{str(len(textures_assigned))} textures were imported {str(textures_assigned)}",)
 
     def get_texture_type(self, filename):
@@ -369,9 +391,10 @@ class REMOVE_OT_UNUSED_TEXTURES(bpy.types.Operator):
         y_offset = 0
         node_spacing = 300
         for node in nodes:
-            if isinstance(node, bpy.types.ShaderNodeTexImage):
-                node.location.y = y_offset
-                y_offset -= node_spacing
+            node.location.y = y_offset
+            y_offset -= node_spacing
+            
+            #if isinstance(node, bpy.types.ShaderNodeTexImage):
 
 
 class OPEN_OT_FBXFolder(bpy.types.Operator):
@@ -384,6 +407,7 @@ class OPEN_OT_FBXFolder(bpy.types.Operator):
 
         preferences = context.preferences
         export_folder = preferences.addons[__package__].preferences.export_folder
+
         try:
             os.startfile(export_folder)
             self.report({"INFO"}, f"Opened folder: {export_folder}")
@@ -439,7 +463,7 @@ class VIEW3D_PT_QuickExporter_ImportSettings(bpy.types.Panel):
         col = layout.column()
         col.prop(texture_settings, "use_normal_map", text="Normal Map")
         col.prop(texture_settings, "use_bump_map", text="Bump Map")
-
+        col.prop(texture_settings, "clean_work_space", text="Clear Workspace")
 
 class VIEW3D_PT_QuickExporter_Cleanup(bpy.types.Panel):
     """Cleanup Functions Panel for the addon"""
