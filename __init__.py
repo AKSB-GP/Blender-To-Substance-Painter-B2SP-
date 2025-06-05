@@ -73,7 +73,6 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
         if not os.path.exists(export_folder):
             export_folder = Path(bpy.path.abspath("//"))
         # Check if any objects have been selected
-        # bpy.data.objects
         if not objects:
             self.report({"INFO"}, "No object selected")
             return {"CANCELLED"}
@@ -82,45 +81,37 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
         # Append the paths to the export list
         folder_name = bpy.context.active_object.name
         folder_path = Path(export_folder) / folder_name
-
+        #make subfolders for each object and export them to substancepainter
         try:
             folder_path.mkdir(parents=True, exist_ok=True)
             export_paths = []
-            # os.path.join(a, b) same as 	Path(a) / b
             for obj in objects:
                 obj_folder = folder_path / obj.name
                 obj_folder.mkdir(parents=True, exist_ok=True)
                 export_result = self.export_object(str(obj_folder), obj)
                 if export_result:
                     export_paths.append(export_result)
-
             if export_paths:
                 self.open_substance_painter(export_paths, substance_painter_path)
-
             return {"FINISHED"}
 
         except Exception as e:
-            self.report({"ERROR"}, f"Failed to export objects: {str(e)}")
+            self.report({"ERROR"}, f"Failed to export objects with error: {str(e)}")
             return {"CANCELLED"}
 
     def check_material(self, obj):
         """checks if object has any materials and nodes enabled"""
         if len(obj.data.materials) == 0:
-            self.report({"INFO"}, f"No material on {obj.name}, adding new one")
+            self.report({"INFO"}, f"No material on {obj.name}, adding material")
             new_material = bpy.data.materials.new(name=f"{obj.name}_material")
             new_material.use_nodes = True
             obj.data.materials.append(new_material)
             self.report({"INFO"}, f"{obj.name} has a {obj.name}_material added to it")
 
-    # bpy.ops.object.move_to_collection(collection_index=0, is_new=True, new_collection_name="meshes")
-
     def export_object(self, export_folder, obj):
         """Return the fbx filepath and exports the mesh from blender to the specificed folderpath"""
-
         if obj.type == "MESH":
-            # check material on object
             self.check_material(obj)
-            # object_folder = os.path.join(export_folder, obj.name)
             os.makedirs(export_folder, exist_ok=True)
             # Export object
             export_name = f"{obj.name}.fbx"
@@ -136,7 +127,7 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
             return export_path
         else:
             self.report(
-                {"WARNING"}, f"{obj.name} is not a mesh object, skipping mesh check."
+                {"WARNING"}, f"{obj.name} is not a mesh object, skipping mesh export."
             )
             return None
 
@@ -153,7 +144,7 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
             subprocess.Popen(args, stdout=subprocess.PIPE, text=True)
             self.report(
                 {"INFO"},
-                f"Trying to open Substance Painter with FBX files: {', '.join(export_paths)}",
+                f"Exporting: {', '.join(export_paths)}",
             )
         except Exception as e:
             self.report({"ERROR"}, f"Could not open Substance Painter: {str(e)}")
@@ -179,11 +170,14 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                 return {"CANCELLED"}
             if obj.type != "MESH":
                 continue
+            if parent_folder is None:
+                self.report({"INFO"}, "Parent folder not found for the selected objects, perhaps you forgot to export the object first?")
+                return {"CANCELLED"}
             object_folder = os.path.join(parent_folder, obj.name)
             os.makedirs(object_folder, exist_ok=True)
-            # Check if the texture folder exists
-            if not os.path.exists(object_folder):
-                self.report({"INFO"}, f"Texture folder does not exist for {obj.name}")
+            
+            if not os.path.exists(object_folder) or not os.path.exists(parent_folder):
+                self.report({"INFO"}, f"Folder does not exist for {obj.name}")
                 continue
             try:
                 if not obj.data.materials:
@@ -198,14 +192,13 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                     self.assign_textures(
                         mat, object_folder, context.scene.texture_settings
                     )
-                    # if an error occurs, move to next  object
             except Exception as e:
-                self.report({"INFO"}, f"Error assigning textures to {obj.name}: {str(e)}",)
+                self.report({"INFO"}, f"Error assigning textures to {obj.name} with error: {str(e)}",)
                 continue
         return {"FINISHED"}
 
     def folder_iteration(self, base_path, objects):
-        # creat path object:
+        '''Method to iterate through the object folder to find the parent folder containing the objects '''
         path = Path(base_path)
         # Find the parent folder containing all of the objects:
         for f in path.iterdir():
@@ -226,7 +219,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
         file_types = (".png", ".jpg", ".jpeg")
         node_x_displacement = 400
         # Used to reset position
-        node_y_position = 0
+        node_y_position = 400
         # Used to show what textures where assigned
         textures_assigned = []
         # Remove previous nodes to clear the workspace
@@ -239,10 +232,10 @@ class IMPORT_OT_Textures(bpy.types.Operator):
         principled_node.location = (0, 0)
         # Link the Principled BSDF to the Material Output
         links.new(principled_node.outputs["BSDF"], output_node.inputs["Surface"])
-        # Normal and displacement placeholder
-        normal_node_tmp = None
-        displace_node_tmp = None
-        # assign textures to material:
+        # Normal and displacement rereferences
+        normal_node_ref = None
+        displace_node_ref = None
+        # Iterates through the texture folder of an object and assigns textures to the material:
         for filename in os.listdir(textures_folder):
             if filename.lower().endswith(file_types):
                 if material.name not in filename:
@@ -250,66 +243,64 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                 texture_type = self.get_texture_type(filename)
                 filepath = os.path.join(textures_folder, filename)
                 textures_assigned.append(filename)
-                # Create an image node and apply texture
-                #image_node = nodes.new(type="ShaderNodeTexImage")
-                #image_node.location = (-800, node_y_position)
-                #image_node.image = bpy.data.images.load(filepath)
-                # align better to bsdf
-                # connect to BSDF
                 if texture_type == "Base Color":
                     image_node = self.create_image_node(nodes,node_y_position,filepath)
                     links.new(
                         image_node.outputs["Color"],
                         principled_node.inputs["Base Color"],
                     )
+                    node_y_position -= 400
+
                 elif texture_type == "Roughness":
                     image_node = self.create_image_node(nodes,node_y_position,filepath)
                     links.new(
                         image_node.outputs["Color"], principled_node.inputs["Roughness"]
                     )
                     image_node.image.colorspace_settings.name = "Non-Color"
+                    node_y_position -= 400
                 elif texture_type =="Displacement" and texture_settings.use_bump_map:
                     image_node = self.create_image_node(nodes,node_y_position,filepath)
                     image_node.image.colorspace_settings.name = "Non-Color"
                     if texture_settings.use_normal_map:
-                        normal_node_tmp = image_node
+                        normal_node_ref = image_node
                     else:
                         bump_node = nodes.new(type="ShaderNodeBump")
                         bump_node.location = (image_node.location.x +node_x_displacement,node_y_position)
                         links.new(image_node.outputs["Color"],bump_node.inputs["Height"])
                         links.new(bump_node.outputs["Normal"],principled_node.inputs["Normal"])   
+                    node_y_position -= 400
 
                 elif texture_type =="Normal" and texture_settings.use_normal_map:
                     image_node = self.create_image_node(nodes,node_y_position,filepath)
                     image_node.image.colorspace_settings.name = "Non-Color"
                     if texture_settings.use_bump_map:
-                        displace_node_tmp = image_node
+                        displace_node_ref = image_node
                     else:
                         normal_map_node = nodes.new(type="ShaderNodeNormalMap")
                         normal_map_node.location = (image_node.location.x +node_x_displacement,node_y_position)
                         links.new(image_node.outputs["Color"],normal_map_node.inputs["Color"])
                         links.new(normal_map_node.outputs["Normal"],principled_node.inputs["Normal"])   
-                
+                    node_y_position -= 400
+
                 elif texture_type == "Metallic":
                     image_node = self.create_image_node(nodes,node_y_position,filepath)
                     links.new(
                         image_node.outputs["Color"], principled_node.inputs["Metallic"]
                     )
                     image_node.image.colorspace_settings.name = "Non-Color"
-                node_y_position -= 400
+                    node_y_position -= 400
+                    
         if texture_settings.use_bump_map and texture_settings.use_normal_map:
             bump_normal_node = nodes.new(type="ShaderNodeBump")
-            #displace_node_tmp.outputs.links.clear()
-            #normal_node_tmp.outputs.links.clear()
-            #KOlla om continue fungerar ovan. skapa inte noderna om du vet att de ska kombineras sen
-            bump_normal_node.location = (displace_node_tmp.location.x + node_x_displacement, displace_node_tmp.location.y)
-            links.new(displace_node_tmp.outputs["Color"], bump_normal_node.inputs["Normal"])
-            links.new(normal_node_tmp.outputs["Color"], bump_normal_node.inputs["Height"])
+            #bump_normal_node.location = (displace_node_ref.location.x + node_x_displacement, displace_node_ref.location.y)
+            bump_normal_node.location = ( displace_node_ref.location.x + node_x_displacement,(displace_node_ref.location.y-normal_node_ref.location.y)/2.0)
+            links.new(displace_node_ref.outputs["Color"], bump_normal_node.inputs["Normal"])
+            links.new(normal_node_ref.outputs["Color"], bump_normal_node.inputs["Height"])
             links.new(bump_normal_node.outputs["Normal"], principled_node.inputs["Normal"])
         self.report({"INFO"},f"{str(len(textures_assigned))} textures were imported {str(textures_assigned)}",)
 
     def get_texture_type(self, filename):
-        """Returns the texture type name"""
+        """Returns the texture by type"""
         if "diffuse" in filename.lower() or "basecolor" in filename.lower():
             return "Base Color"
         elif "roughness" in filename.lower():
@@ -325,6 +316,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
     
         
     def create_image_node(self,nodes,node_y_position,filepath):
+        '''Creates an image node and loads a texture to it'''
         image_node = nodes.new(type="ShaderNodeTexImage")
         image_node.location = (-800, node_y_position)
         image_node.image = bpy.data.images.load(filepath)
@@ -335,7 +327,6 @@ class IMPORT_OT_Textures(bpy.types.Operator):
 
 class REMOVE_OT_UNUSED_TEXTURES(bpy.types.Operator):
     """Removes any unused image texture nodes in the entire scene or for the selected material only"""
-
     bl_idname = "remove.unusedtextures"
     bl_label = "Remove Unused Textures"
 
@@ -370,20 +361,13 @@ class REMOVE_OT_UNUSED_TEXTURES(bpy.types.Operator):
                 if isinstance(node, bpy.types.ShaderNodeTexImage):
                     if len(node.outputs[0].links) == 0:
                         mat_nodes.remove(node)
-                if isinstance(node, bpy.types.ShaderNodeBump):
-                    if len(node.outputs[0].links) == 0:
-                        mat_nodes.remove(node)
-                if isinstance(node, bpy.types.ShaderNodeNormalMap):
-                    if len(node.outputs[0].links) == 0:
-                        mat_nodes.remove(node)
         except Exception as e:
-            self.report({"INFO"}, f"An error occurred: {e}")
+            self.report({"INFO"}, f"Failed to remove nodes with error: {e}")
 
     def realign_nodes(self, nodes):
         """Realigns the remaining texture nodes for better structure"""
         y_offset = 0
         node_spacing = 300
-        # Arranges nodes, searching for ShaderNodeTexImage nodes only
         for node in nodes:
             if isinstance(node, bpy.types.ShaderNodeTexImage):
                 node.location.y = y_offset
