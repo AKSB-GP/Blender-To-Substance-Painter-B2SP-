@@ -3,15 +3,12 @@ import os
 import subprocess
 from pathlib import Path
 
-
 # --------------------------------------------------------------------------------
 # PROPERTIES AND FOLDER PATHS
 # --------------------------------------------------------------------------------
 class FolderPathPreferences(bpy.types.AddonPreferences):
     """Paths for substance painter executable and export_folder"""
-
     bl_idname = __package__
-
     spp_exe: bpy.props.StringProperty(
         name="Substance Painter executable path",
         subtype="FILE_PATH",
@@ -20,7 +17,6 @@ class FolderPathPreferences(bpy.types.AddonPreferences):
     export_folder: bpy.props.StringProperty(
         name="Object export folder path", subtype="DIR_PATH", default=""
     )
-
     def draw(self, context):
         layout = self.layout
         layout.label(
@@ -29,13 +25,11 @@ class FolderPathPreferences(bpy.types.AddonPreferences):
         layout.prop(self, "spp_exe")
         layout.prop(self, "export_folder")
 
-
 class TextureSettings(bpy.types.PropertyGroup):
     """
     Class that handles which textures to include during the import
     from Substance Painter
-    """
-
+    """    
     use_normal_map: bpy.props.BoolProperty(
         name="use_normal_map",
         description="Enable to use Normal Map",
@@ -51,21 +45,18 @@ class TextureSettings(bpy.types.PropertyGroup):
         description="Enable to remove all unused image nodes, otherwise only remove on seleced material",
         default=False,
     )
-    clean_work_space: bpy.props.BoolProperty(
+    clear_work_space: bpy.props.BoolProperty(
         name="Clean workspace",
         description="Enable to remove all nodes in the material before importing textures",
         default=True,
     )
 
-
 # --------------------------------------------------------------------------------
 # EXPORT AND IMPORT OPERATORS
 # --------------------------------------------------------------------------------
 
-
 class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
     """Class to handle the export from Blender to Substance Painter"""
-
     bl_idname = "export.substance_painter"
     bl_label = "Export to Substance Painter"
 
@@ -77,7 +68,6 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
         # Check if export folder path exists, if not export textures in the same folder as blend file
         if not os.path.exists(export_folder):
             export_folder = Path(bpy.path.abspath("//"))
-        # Check if any objects have been selected
         if not objects:
             self.report({"INFO"}, "No object selected")
             return {"CANCELLED"}
@@ -154,13 +144,11 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
         except Exception as e:
             self.report({"ERROR"}, f"Could not open Substance Painter: {str(e)}")
 
-
 class IMPORT_OT_Textures(bpy.types.Operator):
     """Operator to handle importing textures from Substance Painter back to Blender"""
-
     bl_idname = "import.textures"
     bl_label = "import Textures"
-
+    
     def execute(self, context):
         preferences = context.preferences
         export_folder_path = preferences.addons[__package__].preferences.export_folder
@@ -173,7 +161,8 @@ class IMPORT_OT_Textures(bpy.types.Operator):
             if obj.type != "MESH":
                 continue
             if parent_folder is None:
-                self.report({"INFO"}, "Parent folder not found for the selected objects, perhaps you forgot to export the object first?")
+                self.report({"INFO"}, "Folder not found for the selected object, perhaps you forgot to export the object first?")
+                self.report({"INFO"}, "If you already exported the object remeber to include select the object with the same name as the folder in the export folder")
                 return {"CANCELLED"}
             object_folder = os.path.join(parent_folder, obj.name)
             os.makedirs(object_folder, exist_ok=True)
@@ -225,10 +214,9 @@ class IMPORT_OT_Textures(bpy.types.Operator):
         # Used to show what textures where assigned
         textures_assigned = []
         # Remove previous nodes to clear the workspace if the user wants it
-        if texture_settings.clean_work_space:
+        if texture_settings.clear_work_space:
             for node in nodes:
                 nodes.remove(node)
-                
         # check if output and bsdf_principled nodes exist
         output_node = None
         principled_node = None
@@ -244,8 +232,6 @@ class IMPORT_OT_Textures(bpy.types.Operator):
         if not principled_node:
             principled_node = nodes.new(type="ShaderNodeBsdfPrincipled")
             principled_node.location = (0, 0)
-       
-        # Link the Principled BSDF to the Material Output
         links.new(principled_node.outputs["BSDF"], output_node.inputs["Surface"])
         # Normal and displacement rereferences
         normal_node_ref = None
@@ -259,20 +245,17 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                 filepath = os.path.join(textures_folder, filename)
                 if texture_type == "Base Color":
                     image_node = self.create_image_node(nodes,node_y_position,filepath)
-                    if texture_settings.clean_work_space:
+                    if texture_settings.clear_work_space:
                         links.new(
                             image_node.outputs["Color"],
                             principled_node.inputs["Base Color"],
                         )
                     node_y_position -= 400
                     textures_assigned.append(filename)
-
                 elif texture_type == "Roughness":
                     image_node = self.create_image_node(nodes,node_y_position,filepath)
-                    if texture_settings.clean_work_space:
-                        links.new(
-                            image_node.outputs["Color"], principled_node.inputs["Roughness"]
-                        )
+                    if texture_settings.clear_work_space:
+                        links.new(image_node.outputs["Color"], principled_node.inputs["Roughness"])
                     image_node.image.colorspace_settings.name = "Non-Color"
                     node_y_position -= 400
                     textures_assigned.append(filename)
@@ -286,7 +269,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                         bump_node.location = (image_node.location.x +node_x_displacement,node_y_position)
                         
                         links.new(image_node.outputs["Color"],bump_node.inputs["Height"])
-                        if texture_settings.clean_work_space:
+                        if texture_settings.clear_work_space:
                             links.new(bump_node.outputs["Normal"],principled_node.inputs["Normal"])   
                     node_y_position -= 400
                     textures_assigned.append(filename)
@@ -299,14 +282,14 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                         normal_map_node = nodes.new(type="ShaderNodeNormalMap")
                         normal_map_node.location = (image_node.location.x +node_x_displacement,node_y_position)
                         links.new(image_node.outputs["Color"],normal_map_node.inputs["Color"])
-                        if texture_settings.clean_work_space:
+                        if texture_settings.clear_work_space:
                             links.new(normal_map_node.outputs["Normal"],principled_node.inputs["Normal"])   
                     node_y_position -= 400
                     textures_assigned.append(filename)
                 elif texture_type == "Metallic":
                     image_node = self.create_image_node(nodes,node_y_position,filepath)
                     image_node.image.colorspace_settings.name = "Non-Color"
-                    if texture_settings.clean_work_space:
+                    if texture_settings.clear_work_space:
                         links.new(
                             image_node.outputs["Color"], principled_node.inputs["Metallic"]
                         )
@@ -317,7 +300,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
             bump_normal_node.location = ( displace_node_ref.location.x + node_x_displacement,(displace_node_ref.location.y-normal_node_ref.location.y)/2.0)
             links.new(displace_node_ref.outputs["Color"], bump_normal_node.inputs["Normal"])
             links.new(normal_node_ref.outputs["Color"], bump_normal_node.inputs["Height"])
-            if texture_settings.clean_work_space:
+            if texture_settings.clear_work_space:
                 links.new(bump_normal_node.outputs["Normal"], principled_node.inputs["Normal"])
         self.report({"INFO"},f"{str(len(textures_assigned))} textures were imported {str(textures_assigned)}",)
 
@@ -335,14 +318,14 @@ class IMPORT_OT_Textures(bpy.types.Operator):
             return "Metallic"
         else:
             return None
-    
-        
+          
     def create_image_node(self,nodes,node_y_position,filepath):
         '''Creates an image node and loads a texture to it'''
         image_node = nodes.new(type="ShaderNodeTexImage")
         image_node.location = (-800, node_y_position)
         image_node.image = bpy.data.images.load(filepath)
         return image_node
+    
 # --------------------------------------------------------------------------------
 # UTILITY OPERATORS
 # --------------------------------------------------------------------------------
@@ -393,21 +376,15 @@ class REMOVE_OT_UNUSED_TEXTURES(bpy.types.Operator):
         for node in nodes:
             node.location.y = y_offset
             y_offset -= node_spacing
-            
-            #if isinstance(node, bpy.types.ShaderNodeTexImage):
-
 
 class OPEN_OT_FBXFolder(bpy.types.Operator):
     """Opens the FBX Export Folder"""
-
     bl_idname = "open.fbx_folder"
     bl_label = "Open FBX Folder"
 
     def execute(self, context):
-
         preferences = context.preferences
         export_folder = preferences.addons[__package__].preferences.export_folder
-
         try:
             os.startfile(export_folder)
             self.report({"INFO"}, f"Opened folder: {export_folder}")
@@ -415,15 +392,12 @@ class OPEN_OT_FBXFolder(bpy.types.Operator):
             self.report({"ERROR"}, f"Failed to open folder, the error: {str(e)}")
         return {"FINISHED"}
 
-
 # --------------------------------------------------------------------------------
 # UI PANELs
 # --------------------------------------------------------------------------------
 
-
 class VIEW3D_PT_QuickExporter_ExportImport(bpy.types.Panel):
     """Export/Import Panel for the addon"""
-
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "B2SP Linker"
@@ -447,10 +421,8 @@ class VIEW3D_PT_QuickExporter_ExportImport(bpy.types.Panel):
             OPEN_OT_FBXFolder.bl_idname, text="Open Object folder", icon="FILE_FOLDER"
         )
 
-
 class VIEW3D_PT_QuickExporter_ImportSettings(bpy.types.Panel):
     """Texture Import Settings Panel for the addon"""
-
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "B2SP Linker"
@@ -463,11 +435,10 @@ class VIEW3D_PT_QuickExporter_ImportSettings(bpy.types.Panel):
         col = layout.column()
         col.prop(texture_settings, "use_normal_map", text="Normal Map")
         col.prop(texture_settings, "use_bump_map", text="Bump Map")
-        col.prop(texture_settings, "clean_work_space", text="Clear Workspace")
+        col.prop(texture_settings, "clear_work_space", text="Clear Workspace")
 
 class VIEW3D_PT_QuickExporter_Cleanup(bpy.types.Panel):
     """Cleanup Functions Panel for the addon"""
-
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "B2SP Linker"
@@ -484,11 +455,9 @@ class VIEW3D_PT_QuickExporter_Cleanup(bpy.types.Panel):
             icon="TRASH",
         )
 
-
 # --------------------------------------------------------------------------------
 # REGISTERING CLASSES
 # --------------------------------------------------------------------------------
-
 classes = (
     FolderPathPreferences,
     TextureSettings,
@@ -501,19 +470,16 @@ classes = (
     REMOVE_OT_UNUSED_TEXTURES,
 )
 
-
 # Register and unregister classes
 def register():
     for c in classes:
         bpy.utils.register_class(c)
     bpy.types.Scene.texture_settings = bpy.props.PointerProperty(type=TextureSettings)
 
-
 def unregister():
     del bpy.types.Scene.texture_settings
     for c in reversed(classes):
         bpy.utils.unregister_class(c)
-
 
 if __package__ == "__main__":
     register()
