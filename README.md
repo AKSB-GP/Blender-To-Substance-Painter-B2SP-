@@ -4,10 +4,10 @@ A Blender addon which simplifies exports and imports between Blender and Substan
 
 ## Developed on:
 - **Python**: 3.12.7  
-- **Blender Version**: 4.2.3
+- **Blender Version**: 4.4.4
 - **Windows 10**
 
-Other Python and Blender version should work but have not been tested on.
+Other Python and Blender version should work but I have not tested then myself.
 
 
 ## Features
@@ -46,6 +46,7 @@ Other Python and Blender version should work but have not been tested on.
 1. **Prepare the mesh**:  
    - Ensure your mesh has proper UVs and materials set up in Blender.  
    - Make sure that all materials have unique names, as otherwise this can cause issues.
+   - If the mesh already has materials attached to it, then the name of the object will be added as a prefix to the material. 
 
 2. **Export the mesh**:  
    - Select the objects you want to export to Substance Painter.  
@@ -60,18 +61,19 @@ Other Python and Blender version should work but have not been tested on.
      ├── EXPORT_FOLDER_NAME/
      │   └── Cube
      │       ├──Cube
-                ├── Cube.fbx
+                └── Cube.fbx
      ```
       - The structure after exporting multiple meshes with the active mesh being named "Cube":
      ```
-     ├── EXPORT_FOLDER_NAME/
-     │   └── Cube
-     │       ├──Cube
-                ├── Cube.fbx
-                ├── Cube1.fbx
-                ├── Cube2.fbx
+      ├── EXPORT_FOLDER_NAME/
+      │ 
+      └── Cube
+      	 ├──Cube
+      	    └── Cube.fbx
+      	 ├──Cube2
+      	    └── Cube2.fbx
      ```
-
+The textures are imported into the corresponding object and resides besides the .fbx file. 
 
 
 ### Exporting Textures from Substance Painter
