@@ -102,6 +102,9 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
             new_material.use_nodes = True
             obj.data.materials.append(new_material)
             self.report({"INFO"}, f"{obj.name} has a {obj.name}_material added to it")
+        else:
+            for mat in obj.data.materials:
+                mat.name = obj.name+"_"+mat.name
 
     def export_object(self, export_folder, obj):
         """Return the fbx filepath and exports the mesh from blender to the specificed folderpath"""
@@ -109,7 +112,7 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
             self.check_material(obj)
             os.makedirs(export_folder, exist_ok=True)
             # Export object
-            export_name = f"{obj.name}.fbx"
+            export_name = f"{obj.name}.fbx"           
             export_path = os.path.normpath(os.path.join(export_folder, export_name))
             bpy.ops.export_scene.fbx(
                 filepath=export_path,
@@ -303,7 +306,7 @@ class IMPORT_OT_Textures(bpy.types.Operator):
             if texture_settings.clear_work_space:
                 links.new(bump_normal_node.outputs["Normal"], principled_node.inputs["Normal"])
         self.report({"INFO"},f"{str(len(textures_assigned))} textures were imported {str(textures_assigned)}",)
-
+    
     def get_texture_type(self, filename):
         """Returns the texture by type"""
         if "diffuse" in filename.lower() or "basecolor" in filename.lower():
