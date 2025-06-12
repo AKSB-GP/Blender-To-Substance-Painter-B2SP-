@@ -113,3 +113,117 @@ If both normal maps and bump maps are used then both will be imported and then c
 
 1. **Access the export folder**:  
    Open the export folder for faster access to objects and textures.
+
+
+
+### Notes about Substance Painter
+
+Exporting each material into the correct folder can be tedious and thus I have created a small plugin within Substance Painter which allows automatic exports the texture to each folder: 
+``` python 
+import os
+from PySide2 import QtWidgets, QtCore
+import substance_painter.ui
+import substance_painter.export
+import substance_painter.project
+import substance_painter.textureset
+import substance_painter.resource
+plugin_widgets = []
+export_helper = None
+
+#Split into two classes: one for logic and one for UI
+class B2SPHelper:
+    def __init__(self):
+        self.export_path = ""
+    def set_export_path(self, label_widget):
+        path = QtWidgets.QFileDialog.getExistingDirectory(None, "Select Export Folder")
+        if path:
+            self.export_path = path
+            label_widget.setText(f"Export Path: {path}")
+        else:
+            label_widget.setText("Export Path: Not set")
+            print("No folder path selected.")
+
+    def get_export_path(self):
+        return self.export_path
+        
+    def export_textures(self):
+        if not substance_painter.project.is_open():
+            print("No project open.")
+            return
+
+        if not self.export_path:
+            print("Export path is not set.")
+            return
+
+        export_preset = substance_painter.resource.ResourceID(
+            context="starter_assets", name="Blender (Principled BSDF)"
+        )
+
+        for stack in substance_painter.textureset.all_texture_sets():
+            #get the object suffix so that the correct folder is used
+            object_name = stack.name().split('_')[0]
+            print(f" new name {object_name}")
+            
+            object_path = os.path.join(self.export_path, object_name)
+            if not os.path.exists(object_path):
+               object_path = self.export_path                 
+            print(f"Exporting: {stack.name()} to {object_path}")
+
+            config = {
+                "exportShaderParams": False,
+                "exportPath": object_path,
+                "exportList": [{"rootPath": str(stack.name())}],
+                "exportPresets": [{"name": "default", "maps": []}],
+                "defaultExportPreset": export_preset.url(),
+                "exportParameters": [{"parameters": {"paddingAlgorithm": "infinite"}}]
+            }
+
+            substance_painter.export.export_project_textures(config)
+
+
+class B2SPUI(QtWidgets.QWidget):
+    '''UI for helper, inherits from logic class'''
+    def __init__(self, export_helper_instance):
+        super().__init__()
+        self.helper = export_helper_instance
+        self.setWindowTitle("B2SP Exporter")
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QtWidgets.QVBoxLayout()
+        self.path_label = QtWidgets.QLabel("Export Path: Not set")
+        #Buttons
+        set_path_btn = QtWidgets.QPushButton("Set Export Path")
+        export_btn = QtWidgets.QPushButton("Export Textures")
+        #actions for buttons
+        set_path_btn.clicked.connect(lambda: self.helper.set_export_path(self.path_label))
+        export_btn.clicked.connect(self.helper.export_textures)
+        #add widgets
+        layout.addWidget(self.path_label)
+        layout.addWidget(set_path_btn)
+        layout.addWidget(export_btn)
+        self.setLayout(layout)
+
+'''Start and close functions for the plugin'''
+def start_plugin():
+    global export_helper
+    #create instance and activate UI_widget
+    export_helper = B2SPHelper()
+
+    ui_widget = B2SPUI(export_helper)
+    substance_painter.ui.add_dock_widget(ui_widget)
+
+    plugin_widgets.append(ui_widget)
+
+
+def close_plugin():
+    for widget in plugin_widgets:
+        substance_painter.ui.delete_ui_element(widget)
+    plugin_widgets.clear()
+
+
+if __name__ == "__main__":
+    start_plugin()
+```
+
+   
