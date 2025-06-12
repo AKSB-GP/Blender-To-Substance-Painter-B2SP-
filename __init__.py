@@ -112,10 +112,8 @@ class EXPORT_OT_SubstancePainterExporter(bpy.types.Operator):
             self.check_material(obj)
             os.makedirs(export_folder, exist_ok=True)
             # Export object
-           #export_name = f"{obj.name}.fbx"
             export_name = f"{obj.name}.fbx"           
             export_path = os.path.normpath(os.path.join(export_folder, export_name))
-            #export_path = os.path.normpath(export_folder)
             bpy.ops.export_scene.fbx(
                 filepath=export_path,
                 global_scale=1.0,
