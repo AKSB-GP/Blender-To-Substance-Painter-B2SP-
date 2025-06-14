@@ -246,58 +246,59 @@ class IMPORT_OT_Textures(bpy.types.Operator):
                     continue
                 texture_type = self.get_texture_type(filename)
                 filepath = os.path.join(textures_folder, filename)
-                if texture_type == "Base Color":
-                    image_node = self.create_image_node(nodes,node_y_position,filepath)
-                    if texture_settings.clear_work_space:
-                        links.new(
-                            image_node.outputs["Color"],
-                            principled_node.inputs["Base Color"],
-                        )
-                    node_y_position -= 400
-                    textures_assigned.append(filename)
-                elif texture_type == "Roughness":
-                    image_node = self.create_image_node(nodes,node_y_position,filepath)
-                    if texture_settings.clear_work_space:
-                        links.new(image_node.outputs["Color"], principled_node.inputs["Roughness"])
-                    image_node.image.colorspace_settings.name = "Non-Color"
-                    node_y_position -= 400
-                    textures_assigned.append(filename)
-                elif texture_type =="Displacement" and texture_settings.use_bump_map:
-                    image_node = self.create_image_node(nodes,node_y_position,filepath)
-                    image_node.image.colorspace_settings.name = "Non-Color"
-                    if texture_settings.use_normal_map:
-                        normal_node_ref = image_node
-                    else:
-                        bump_node = nodes.new(type="ShaderNodeBump")
-                        bump_node.location = (image_node.location.x +node_x_displacement,node_y_position)
-                        
-                        links.new(image_node.outputs["Color"],bump_node.inputs["Height"])
+                match texture_type:
+                    case "Base Color":
+                        image_node = self.create_image_node(nodes,node_y_position,filepath)
                         if texture_settings.clear_work_space:
-                            links.new(bump_node.outputs["Normal"],principled_node.inputs["Normal"])   
-                    node_y_position -= 400
-                    textures_assigned.append(filename)
-                elif texture_type =="Normal" and texture_settings.use_normal_map:
-                    image_node = self.create_image_node(nodes,node_y_position,filepath)
-                    image_node.image.colorspace_settings.name = "Non-Color"
-                    if texture_settings.use_bump_map:
-                        displace_node_ref = image_node
-                    else:
-                        normal_map_node = nodes.new(type="ShaderNodeNormalMap")
-                        normal_map_node.location = (image_node.location.x +node_x_displacement,node_y_position)
-                        links.new(image_node.outputs["Color"],normal_map_node.inputs["Color"])
+                            links.new(
+                                image_node.outputs["Color"],
+                                principled_node.inputs["Base Color"],
+                            )
+                        node_y_position -= 400
+                        textures_assigned.append(filename)
+                    case  "Roughness":
+                        image_node = self.create_image_node(nodes,node_y_position,filepath)
                         if texture_settings.clear_work_space:
-                            links.new(normal_map_node.outputs["Normal"],principled_node.inputs["Normal"])   
-                    node_y_position -= 400
-                    textures_assigned.append(filename)
-                elif texture_type == "Metallic":
-                    image_node = self.create_image_node(nodes,node_y_position,filepath)
-                    image_node.image.colorspace_settings.name = "Non-Color"
-                    if texture_settings.clear_work_space:
-                        links.new(
-                            image_node.outputs["Color"], principled_node.inputs["Metallic"]
-                        )
-                    node_y_position -= 400
-                    textures_assigned.append(filename)                   
+                            links.new(image_node.outputs["Color"], principled_node.inputs["Roughness"])
+                        image_node.image.colorspace_settings.name = "Non-Color"
+                        node_y_position -= 400
+                        textures_assigned.append(filename)
+                    case "Displacement" if texture_settings.use_bump_map:
+                        image_node = self.create_image_node(nodes,node_y_position,filepath)
+                        image_node.image.colorspace_settings.name = "Non-Color"
+                        if texture_settings.use_normal_map:
+                            normal_node_ref = image_node
+                        else:
+                            bump_node = nodes.new(type="ShaderNodeBump")
+                            bump_node.location = (image_node.location.x +node_x_displacement,node_y_position)
+                            
+                            links.new(image_node.outputs["Color"],bump_node.inputs["Height"])
+                            if texture_settings.clear_work_space:
+                                links.new(bump_node.outputs["Normal"],principled_node.inputs["Normal"])   
+                        node_y_position -= 400
+                        textures_assigned.append(filename)
+                    case "Normal" if texture_settings.use_normal_map:
+                        image_node = self.create_image_node(nodes,node_y_position,filepath)
+                        image_node.image.colorspace_settings.name = "Non-Color"
+                        if texture_settings.use_bump_map:
+                            displace_node_ref = image_node
+                        else:
+                            normal_map_node = nodes.new(type="ShaderNodeNormalMap")
+                            normal_map_node.location = (image_node.location.x +node_x_displacement,node_y_position)
+                            links.new(image_node.outputs["Color"],normal_map_node.inputs["Color"])
+                            if texture_settings.clear_work_space:
+                                links.new(normal_map_node.outputs["Normal"],principled_node.inputs["Normal"])   
+                        node_y_position -= 400
+                        textures_assigned.append(filename)
+                    case "Metallic":
+                        image_node = self.create_image_node(nodes,node_y_position,filepath)
+                        image_node.image.colorspace_settings.name = "Non-Color"
+                        if texture_settings.clear_work_space:
+                            links.new(
+                                image_node.outputs["Color"], principled_node.inputs["Metallic"]
+                            )
+                        node_y_position -= 400
+                        textures_assigned.append(filename)                   
         if texture_settings.use_bump_map and texture_settings.use_normal_map:
             bump_normal_node = nodes.new(type="ShaderNodeBump")
             bump_normal_node.location = ( displace_node_ref.location.x + node_x_displacement,(displace_node_ref.location.y-normal_node_ref.location.y)/2.0)
